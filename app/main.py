@@ -607,6 +607,7 @@ def get_mahasiswa_detail(nim: str):
             "semester": mhs_data["smt"],
             "ips_smt1": mhs_data["ips_smt1"],
             "ips_smt2": mhs_data["ips_smt2"],
+            "ipk": round((mhs_data["ips_smt1"] + mhs_data["ips_smt2"]) / 2.0, 2),
             "delta_ips": round(mhs_data["delta_ips"], 2),
             "golongan_ukt": mhs_data["golongan_ukt"],
             "status_cuti": mhs_data["status_cuti"],
