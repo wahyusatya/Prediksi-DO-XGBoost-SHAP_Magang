@@ -1,0 +1,43 @@
+version: "3.8"
+
+services:
+  db_siprido:
+    image: postgres:15-alpine
+    container_name: db_siprido
+    restart: unless-stopped
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: rootpassword
+      POSTGRES_DB: db_siprido_eis
+    volumes:
+      - siprido_pgdata:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init_db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d db_siprido_eis"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api_siprido:
+    build: .
+    container_name: api_siprido
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_USER=root
+      - DB_PASSWORD=rootpassword
+      - DB_HOST=db_siprido
+      - DB_PORT=5432
+      - DB_NAME=db_siprido_eis
+    volumes:
+      - ./app:/app
+    depends_on:
+      db_siprido:
+        condition: service_healthy
+
+volumes:
+  siprido_pgdata:
+    driver: local

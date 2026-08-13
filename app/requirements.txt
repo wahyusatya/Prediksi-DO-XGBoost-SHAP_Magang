@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+xgboost
+shap
+joblib
+pandas
+numpy
+sqlalchemy
+pg8000
