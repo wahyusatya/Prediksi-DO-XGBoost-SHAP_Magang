@@ -327,77 +327,167 @@ def _build_shap_description(feature_name: str, shap_value: float, raw_value: flo
 # Endpoint 1: GET /api/v1/mahasiswa
 # ============================================================
 @app.get("/api/v1/mahasiswa")
-def get_all_mahasiswa():
+def get_all_mahasiswa(
+    fakultas: Optional[str] = Query(None, description="Filter berdasarkan fakultas"),
+    status_risiko: Optional[str] = Query(None, description="Filter berdasarkan status risiko"),
+    semester: Optional[int] = Query(None, description="Filter berdasarkan semester"),
+    search: Optional[str] = Query(None, description="Pencarian nama atau NIM"),
+):
     """
     Mengembalikan list seluruh mahasiswa beserta skor prediksi (%)
     dan status risiko untuk tabel utama UI Siprido.
 
-    Skor dihitung real-time menggunakan model dan disinkronisasi
-    ke tabel prediksi_do untuk menjamin konsistensi penuh.
+    Skor dihitung real-time ter-vektorisasi (Batch Vectorization) untuk efisiensi CPU maksimal
+    dan disinkronisasi ke tabel prediksi_do secara aman.
     """
-    query = text("""
-        SELECT
-            m.nim,
-            m.nama,
-            m.fakultas_prodi,
-            m.smt,
-            m.ips_smt1,
-            m.ips_smt2,
-            m.golongan_ukt,
-            m.status_cuti,
-            m.kode_wilayah,
-            m.asal_daerah,
-            m.persen_kehadiran_smt2,
-            m.mk_cekal_uas_smt2
-        FROM data_mahasiswa_smt2 m
-        ORDER BY m.nim
-    """)
+    try:
+        query = text("""
+            SELECT
+                m.nim,
+                m.nama,
+                m.fakultas_prodi,
+                m.smt,
+                m.ips_smt1,
+                m.ips_smt2,
+                m.golongan_ukt,
+                m.status_cuti,
+                m.kode_wilayah,
+                m.asal_daerah,
+                m.persen_kehadiran_smt2,
+                m.mk_cekal_uas_smt2
+            FROM data_mahasiswa_smt2 m
+            ORDER BY m.nim
+        """)
 
-    upsert_query = text("""
-        INSERT INTO prediksi_do (nim, skor_prediksi, status_risiko, updated_at)
-        VALUES (:nim, :skor, :status, NOW())
-        ON CONFLICT (nim) DO UPDATE
-        SET skor_prediksi = EXCLUDED.skor_prediksi,
-            status_risiko = EXCLUDED.status_risiko,
-            updated_at = NOW();
-    """)
+        upsert_query = text("""
+            INSERT INTO prediksi_do (nim, skor_prediksi, status_risiko, updated_at)
+            VALUES (:nim, :skor, :status, NOW())
+            ON CONFLICT (nim) DO UPDATE
+            SET skor_prediksi = EXCLUDED.skor_prediksi,
+                status_risiko = EXCLUDED.status_risiko,
+                updated_at = NOW();
+        """)
 
-    with engine.begin() as conn:
-        rows = conn.execute(query).mappings().all()
+        with engine.begin() as conn:
+            rows = conn.execute(query).mappings().all()
 
-        result = []
-        for row in rows:
-            mhs_data = dict(row)
-            skor_prediksi, status_risiko = _predict_do_score(mhs_data)
+            if not rows:
+                return {"total": 0, "data": []}
 
-            # Sync ke tabel prediksi_do di database
-            conn.execute(upsert_query, {
-                "nim": row["nim"],
-                "skor": skor_prediksi,
-                "status": status_risiko
-            })
+            # Batch Vectorized XGBoost Prediction for high-performance CPU processing
+            df_all = pd.DataFrame([dict(r) for r in rows])
+            df_all["ips_smt1"] = df_all["ips_smt1"].astype(float)
+            df_all["ips_smt2"] = df_all["ips_smt2"].astype(float)
+            df_all["delta_ips"] = df_all["ips_smt2"] - df_all["ips_smt1"]
+            df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].astype(float)
+            df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].astype(int)
 
-            result.append({
-                "nim": row["nim"],
-                "nama": row["nama"],
-                "fakultas_prodi": row["fakultas_prodi"],
-                "semester": row["smt"],
-                "ips_smt1": float(row["ips_smt1"]),
-                "ips_smt2": float(row["ips_smt2"]),
-                "golongan_ukt": row["golongan_ukt"],
-                "status_cuti": row["status_cuti"],
-                "kode_wilayah": row["kode_wilayah"],
-                "asal_daerah": row.get("asal_daerah", "-"),
-                "wilayah": WILAYAH_LABELS.get(row["kode_wilayah"], "-"),
-                "persen_kehadiran_smt2": float(row.get("persen_kehadiran_smt2", 100.0)),
-                "mk_cekal_uas_smt2": int(row.get("mk_cekal_uas_smt2", 0)),
-                "skor_prediksi": skor_prediksi,
-                "status_risiko": status_risiko,
-            })
+            X_all = df_all[FEATURE_COLUMNS].astype(float)
+            probas_all = model.predict_proba(X_all)[:, 1]
 
-    # Urutkan berdasarkan skor prediksi tertinggi
-    result.sort(key=lambda x: x["skor_prediksi"], reverse=True)
-    return {"total": len(result), "data": result}
+            result = []
+            for i, row in enumerate(rows):
+                mhs_data = dict(row)
+                proba_raw = float(probas_all[i])
+
+                ips1 = float(mhs_data.get("ips_smt1", 0.0))
+                ips2 = float(mhs_data.get("ips_smt2", 0.0))
+                delta = ips2 - ips1
+                cuti = int(mhs_data.get("status_cuti", 0))
+                ukt = int(mhs_data.get("golongan_ukt", 1))
+                wilayah = int(mhs_data.get("kode_wilayah", 1))
+                kehadiran = float(mhs_data.get("persen_kehadiran_smt2", 100.0))
+                mk_cekal = int(mhs_data.get("mk_cekal_uas_smt2", 0))
+
+                if ips1 < 3.00:
+                    base = 70.0
+                    p_ips = (3.00 - ips1) * 8.0
+                    p_cuti = cuti * 4.0
+                    p_cekal = mk_cekal * 2.0
+                    p_kehadiran = max(0.0, (75.0 - kehadiran) * 0.25)
+                    p_ukt = (ukt - 1) * 0.7
+                    p_wilayah = (wilayah - 1) * 1.0
+
+                    calculated_skor = base + p_ips + p_cuti + p_cekal + p_kehadiran + p_ukt + p_wilayah
+                    final_float = 0.40 * (proba_raw * 100) + 0.60 * calculated_skor
+                    final_float = min(98.0, max(70.0, final_float))
+                else:
+                    has_trigger = (
+                        (cuti >= 1)
+                        or (mk_cekal >= 1)
+                        or (kehadiran < 80.0)
+                        or (delta < -0.15)
+                        or (ukt >= 4 and delta < 0)
+                        or (ukt >= 3 and wilayah >= 2)
+                    )
+                    if has_trigger:
+                        base = 40.0
+                        p_cuti = cuti * 10.0
+                        p_cekal = mk_cekal * 6.0
+                        p_kehadiran = max(0.0, (85.0 - kehadiran) * 0.4)
+                        p_delta = abs(delta) * 18.0 if delta < 0 else 0.0
+                        p_ukt = (ukt - 1) * 1.8
+                        p_wilayah = (wilayah - 1) * 2.5
+
+                        calculated_skor = base + p_cuti + p_cekal + p_kehadiran + p_delta + p_ukt + p_wilayah
+                        final_float = min(69.0, max(40.0, calculated_skor))
+                    else:
+                        base = 25.0
+                        ips_bonus = (ips1 - 3.00) * 12.0
+                        ips2_bonus = (ips2 - 3.00) * 8.0
+                        kehadiran_bonus = (kehadiran - 85.0) * 0.5 if kehadiran > 85.0 else 0.0
+                        ukt_penalty = (ukt - 1) * 1.5
+
+                        calculated_skor = base - ips_bonus - ips2_bonus - kehadiran_bonus + ukt_penalty
+                        final_float = 0.50 * (proba_raw * 100) + 0.50 * calculated_skor
+                        final_float = min(39.0, max(5.0, final_float))
+
+                skor_prediksi = int(round(final_float))
+                status_risiko = _klasifikasi_risiko(skor_prediksi)
+
+                # Sync ke tabel prediksi_do di database
+                conn.execute(upsert_query, {
+                    "nim": row["nim"],
+                    "skor": skor_prediksi,
+                    "status": status_risiko
+                })
+
+                # Filtering opsional
+                if fakultas and fakultas.lower() not in row["fakultas_prodi"].lower():
+                    continue
+                if status_risiko_param := status_risiko:
+                    if status_risiko and status_risiko.lower() != status_risiko_param.lower():
+                        continue
+                if semester and row["smt"] != semester:
+                    continue
+                if search:
+                    q = search.lower()
+                    if q not in row["nim"].lower() and q not in row["nama"].lower():
+                        continue
+
+                result.append({
+                    "nim": row["nim"],
+                    "nama": row["nama"],
+                    "fakultas_prodi": row["fakultas_prodi"],
+                    "semester": row["smt"],
+                    "ips_smt1": float(row["ips_smt1"]),
+                    "ips_smt2": float(row["ips_smt2"]),
+                    "golongan_ukt": row["golongan_ukt"],
+                    "status_cuti": row["status_cuti"],
+                    "kode_wilayah": row["kode_wilayah"],
+                    "asal_daerah": row.get("asal_daerah", "-"),
+                    "wilayah": WILAYAH_LABELS.get(row["kode_wilayah"], "-"),
+                    "persen_kehadiran_smt2": float(row.get("persen_kehadiran_smt2", 100.0)),
+                    "mk_cekal_uas_smt2": int(row.get("mk_cekal_uas_smt2", 0)),
+                    "skor_prediksi": skor_prediksi,
+                    "status_risiko": status_risiko,
+                })
+
+        # Urutkan berdasarkan skor prediksi tertinggi
+        result.sort(key=lambda x: x["skor_prediksi"], reverse=True)
+        return {"total": len(result), "data": result}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal server: {str(e)}")
 
 
 # ============================================================

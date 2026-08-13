@@ -47,6 +47,13 @@ CREATE TABLE IF NOT EXISTS prediksi_do (
 );
 
 -- ======================
+-- Indeks Performa Query (Indexing Optimization)
+-- ======================
+CREATE INDEX IF NOT EXISTS idx_mhs_fakultas_prodi ON data_mahasiswa_smt2(fakultas_prodi);
+CREATE INDEX IF NOT EXISTS idx_prediksi_status ON prediksi_do(status_risiko);
+CREATE INDEX IF NOT EXISTS idx_prediksi_skor ON prediksi_do(skor_prediksi DESC);
+
+-- ======================
 -- 3. Data Dummy Mahasiswa Semester 2 (25 mahasiswa)
 -- ======================
 -- Catatan desain data:
