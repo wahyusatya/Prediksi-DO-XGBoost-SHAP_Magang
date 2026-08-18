@@ -1,13 +1,11 @@
 """
 Siprido EIS - Database Connection Module
 ==========================================
-Setup koneksi SQLAlchemy ke PostgreSQL Docker.
+Setup koneksi SQLAlchemy ke PostgreSQL dengan Connection Pooling.
 """
 
 import os
-
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 # ============================================================
 # Konfigurasi Database
@@ -26,19 +24,8 @@ DATABASE_URL = f"postgresql+pg8000://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,       # Memastikan koneksi aktif sebelum digunakan
-    pool_size=10,             # Jumlah koneksi konstan yang selalu siap di pool
+    pool_size=10,             # Jumlah koneksi konstan di pool
     max_overflow=20,          # Koneksi tambahan maksimum saat traffic memuncak
-    pool_recycle=1800,        # Daur ulang koneksi tiap 30 menit untuk mencegah stale handle
+    pool_recycle=1800,        # Daur ulang koneksi tiap 30 menit
     pool_timeout=30,          # Batas waktu tunggu koneksi dari pool (detik)
 )
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def get_db():
-    """FastAPI dependency untuk mendapatkan session database."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()

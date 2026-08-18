@@ -2,15 +2,13 @@
 Siprido EIS - FastAPI REST API Server
 ======================================
 Endpoint utama:
-  GET /api/v1/mahasiswa           → List mahasiswa + skor prediksi DO
-  GET /api/v1/mahasiswa/{nim}/detail → Detail SHAP explanation per mahasiswa
-
-Catatan:
-  Menggunakan XGBoost built-in SHAP (predict dengan pred_contribs=True)
-  agar tidak bergantung pada library SHAP + numba yang membutuhkan DLL.
-
-  Skor prediksi dihitung secara real-time menggunakan model.predict_proba()
-  pada KEDUA endpoint untuk menjamin konsistensi antara dashboard dan detail.
+  GET  /api/v1/mahasiswa                  → List mahasiswa + skor prediksi DO
+  GET  /api/v1/mahasiswa/{nim}/detail     → Detail SHAP explanation per mahasiswa
+  POST /api/v1/mahasiswa/bulk-sync        → Integrasi SIAKAD / IES eksternal
+  POST /api/v1/admin/retrain              → MLOps Hot Retraining
+  GET  /api/v1/analytics/macro-insights   → Agregasi faktor risiko tingkat makro
+  GET  /api/v1/mahasiswa/{nim}/intervensi → Riwayat bimbingan akademik DPA
+  POST /api/v1/mahasiswa/{nim}/intervensi → Catatan intervensi baru DPA
 """
 
 import os
@@ -57,6 +55,7 @@ class IntervensiCreateRequest(BaseModel):
     catatan: str = Field(..., example="Mahasiswa diberikan konseling akademik dan pengajuan keringanan UKT.")
     petugas: str = Field(default="DPA / Akademik", example="Dr. Wayan (DPA)")
 
+
 # ============================================================
 # Konstanta & Konfigurasi
 # ============================================================
@@ -74,7 +73,6 @@ FEATURE_COLUMNS = [
     "mk_cekal_uas_smt2",
 ]
 
-# Mapping nama fitur teknis → label yang mudah dibaca di UI
 FEATURE_LABELS = {
     "ips_smt1": "IPS Semester 1",
     "ips_smt2": "IPS Semester 2",
@@ -86,14 +84,12 @@ FEATURE_LABELS = {
     "mk_cekal_uas_smt2": "Jumlah MK Cekal UAS (<75% Hadir)",
 }
 
-# Mapping kode wilayah → deskripsi
 WILAYAH_LABELS = {
     1: "Dalam Kec. Buleleng, Kab. Buleleng",
     2: "Luar Kec. Buleleng, Kab. Buleleng",
     3: "Luar Kec. & Kab. Buleleng",
 }
 
-# Mapping fitur → Pilar Eksekutif Universitas
 FEATURE_PILLAR = {
     "ips_smt1": "Akademik",
     "ips_smt2": "Akademik",
@@ -105,16 +101,70 @@ FEATURE_PILLAR = {
     "status_cuti": "Kedisiplinan & Keaktifan",
 }
 
-# Mapping pilar → otoritas penanggung jawab
+FEATURE_PILARS_LIST = [FEATURE_PILLAR.get(f, "Lainnya") for f in FEATURE_COLUMNS]
+
 PILLAR_AUTHORITIES = {
     "Akademik": "WR I / Dekan / Kaprodi",
     "Finansial & Wilayah": "WR II / Biro Keuangan / BAAK",
     "Kedisiplinan & Keaktifan": "WR III / DPA",
 }
 
-# ============================================================
+# Pre-compiled SQL statements
+QUERY_UPSERT_PREDIKSI = text("""
+    INSERT INTO prediksi_do (nim, skor_prediksi, status_risiko, updated_at)
+    VALUES (:nim, :skor, :status, NOW())
+    ON CONFLICT (nim) DO UPDATE
+    SET skor_prediksi = EXCLUDED.skor_prediksi,
+        status_risiko = EXCLUDED.status_risiko,
+        updated_at = NOW();
+""")
+
+QUERY_UPSERT_MHS = text("""
+    INSERT INTO data_mahasiswa_smt2
+        (nim, nama, fakultas_prodi, smt, ips_smt1, ips_smt2, golongan_ukt, status_cuti, kode_wilayah, asal_daerah, persen_kehadiran_smt2, mk_cekal_uas_smt2)
+    VALUES
+        (:nim, :nama, :fakultas_prodi, :smt, :ips_smt1, :ips_smt2, :golongan_ukt, :status_cuti, :kode_wilayah, :asal_daerah, :persen_kehadiran_smt2, :mk_cekal_uas_smt2)
+    ON CONFLICT (nim) DO UPDATE
+    SET nama = EXCLUDED.nama,
+        fakultas_prodi = EXCLUDED.fakultas_prodi,
+        smt = EXCLUDED.smt,
+        ips_smt1 = EXCLUDED.ips_smt1,
+        ips_smt2 = EXCLUDED.ips_smt2,
+        golongan_ukt = EXCLUDED.golongan_ukt,
+        status_cuti = EXCLUDED.status_cuti,
+        kode_wilayah = EXCLUDED.kode_wilayah,
+        asal_daerah = EXCLUDED.asal_daerah,
+        persen_kehadiran_smt2 = EXCLUDED.persen_kehadiran_smt2,
+        mk_cekal_uas_smt2 = EXCLUDED.mk_cekal_uas_smt2;
+""")
+
+QUERY_MHS_DETAIL = text("""
+    SELECT
+        m.nim, m.nama, m.fakultas_prodi, m.smt,
+        m.ips_smt1, m.ips_smt2,
+        m.golongan_ukt, m.status_cuti, m.kode_wilayah,
+        m.asal_daerah,
+        m.persen_kehadiran_smt2, m.mk_cekal_uas_smt2
+    FROM data_mahasiswa_smt2 m
+    WHERE m.nim = :nim
+""")
+
+QUERY_GET_INTERVENSI = text("""
+    SELECT id, nim, tanggal, jenis_tindakan, catatan, petugas
+    FROM intervensi_mahasiswa
+    WHERE nim = :nim
+    ORDER BY tanggal DESC
+""")
+
+QUERY_INSERT_INTERVENSI = text("""
+    INSERT INTO intervensi_mahasiswa (nim, jenis_tindakan, catatan, petugas, tanggal)
+    VALUES (:nim, :jenis_tindakan, :catatan, :petugas, NOW())
+    RETURNING id, nim, tanggal, jenis_tindakan, catatan, petugas;
+""")
+
+QUERY_CHECK_MHS_EXISTS = text("SELECT 1 FROM data_mahasiswa_smt2 WHERE nim = :nim")
+
 # Global State (diisi saat startup)
-# ============================================================
 model = None
 
 
@@ -125,16 +175,10 @@ model = None
 async def lifespan(app: FastAPI):
     """Load model saat server startup."""
     global model
-
-    # --- Startup ---
     print("[Startup] Memuat model dari", MODEL_PATH)
     model = joblib.load(MODEL_PATH)
     print("[Startup] Model berhasil dimuat.")
-    print("[Startup] SHAP explanation menggunakan XGBoost built-in pred_contribs.")
-
-    yield  # Server berjalan
-
-    # --- Shutdown ---
+    yield
     print("[Shutdown] Server dimatikan.")
 
 
@@ -148,7 +192,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — agar frontend bisa mengakses API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -170,20 +213,15 @@ def _klasifikasi_risiko(skor: int) -> str:
     return "Rendah"
 
 
-def _prepare_features(mhs_data: dict) -> tuple[pd.DataFrame, dict]:
-    """
-    Menyiapkan DataFrame fitur dari data mahasiswa.
-    Mengembalikan (X DataFrame, updated mhs_data dict).
-    """
-    data = dict(mhs_data)
-    data["ips_smt1"] = float(data["ips_smt1"])
-    data["ips_smt2"] = float(data["ips_smt2"])
-    data["delta_ips"] = data["ips_smt2"] - data["ips_smt1"]
-    data["persen_kehadiran_smt2"] = float(data.get("persen_kehadiran_smt2", 100.0))
-    data["mk_cekal_uas_smt2"] = int(data.get("mk_cekal_uas_smt2", 0))
-
-    X = pd.DataFrame([{col: data[col] for col in FEATURE_COLUMNS}])
-    return X.astype(float), data
+def _prepare_df(records: list[dict]) -> pd.DataFrame:
+    """Menyiapkan DataFrame fitur dari list record mahasiswa secara konsisten."""
+    df = pd.DataFrame(records)
+    df["ips_smt1"] = df["ips_smt1"].astype(float)
+    df["ips_smt2"] = df["ips_smt2"].astype(float)
+    df["delta_ips"] = df["ips_smt2"] - df["ips_smt1"]
+    df["persen_kehadiran_smt2"] = df["persen_kehadiran_smt2"].fillna(100.0).astype(float)
+    df["mk_cekal_uas_smt2"] = df["mk_cekal_uas_smt2"].fillna(0).astype(int)
+    return df
 
 
 def _calc_do_score(proba_raw: float, data: dict) -> tuple[int, str]:
@@ -223,61 +261,70 @@ def _calc_do_score(proba_raw: float, data: dict) -> tuple[int, str]:
     return skor_do, _klasifikasi_risiko(skor_do)
 
 
-
 def _compute_shap_values(X: pd.DataFrame):
     """
     Menghitung SHAP values menggunakan XGBoost built-in pred_contribs.
     Mengembalikan (shap_values_per_fitur, base_value).
-
-    XGBoost pred_contribs mengembalikan array shape (n_samples, n_features + 1)
-    di mana kolom terakhir adalah base value (bias).
     """
     booster = model.get_booster()
     dmatrix = xgb.DMatrix(X, feature_names=FEATURE_COLUMNS)
     contribs = booster.predict(dmatrix, pred_contribs=True)
-
-    # contribs shape: (1, n_features + 1)
-    shap_values = contribs[0, :-1]  # semua kecuali kolom terakhir
-    base_value = contribs[0, -1]    # kolom terakhir = base value (bias)
-
-    return shap_values, base_value
+    return contribs[0, :-1], contribs[0, -1]
 
 
-def _normalize_shap_to_percent(feature_shap_list: list) -> list:
-    """
-    Normalisasi bobot SHAP menjadi persentase kontribusi relatif (%).
-    Menambahkan field 'bobot_persen' dan 'level_dampak' ke setiap item.
-    """
-    total_abs = sum(f["abs_shap"] for f in feature_shap_list)
-    if total_abs == 0:
-        total_abs = 1.0  # guard against division by zero
+def _calc_feature_weight(feat: str, sv: float, rv: float) -> float:
+    """Menghitung weighted importance SHAP untuk faktor pemicu."""
+    w = abs(sv)
+    if feat == "status_cuti" and rv >= 1:
+        w += 0.60 + (rv - 1) * 0.40
+    elif feat == "golongan_ukt" and rv >= 5:
+        w += 0.45 * (rv - 4)
+    elif feat == "kode_wilayah" and rv == 3:
+        w += 0.75
+    elif feat == "kode_wilayah" and rv == 2:
+        w += 0.35
+    elif feat == "delta_ips" and rv < 0:
+        w += abs(rv) * 1.5
+    elif feat == "mk_cekal_uas_smt2" and rv >= 2:
+        w += 0.70 + (rv - 2) * 0.25
+    elif feat == "mk_cekal_uas_smt2" and rv == 1:
+        w += 0.30
+    elif feat == "persen_kehadiran_smt2" and rv < 75:
+        w += (75 - rv) / 50 * 1.2
+    return w
 
-    for f in feature_shap_list:
-        pct = (f["abs_shap"] / total_abs) * 100
-        f["bobot_persen"] = round(pct, 1)
-        if pct >= 50:
-            f["level_dampak"] = "Sangat Dominan"
-        elif pct >= 25:
-            f["level_dampak"] = "Signifikan"
-        else:
-            f["level_dampak"] = "Moderat"
 
-        # Tambahkan pilar & otoritas
-        pilar = FEATURE_PILLAR.get(f["feature"], "Lainnya")
-        f["pilar"] = pilar
-        f["otoritas_pilar"] = PILLAR_AUTHORITIES.get(pilar, "-")
-
-    return feature_shap_list
+def _get_kontribusi(feat: str, sv: float, rv: float) -> str:
+    """Menentukan narasi arah kontribusi faktor terhadap risiko DO."""
+    if sv > 0:
+        return "Meningkatkan risiko DO"
+    if sv < 0:
+        return "Menurunkan risiko DO"
+    if (feat == "delta_ips" and rv < 0) or (feat in ("ips_smt1", "ips_smt2") and rv < 3.0) or \
+       (feat == "status_cuti" and rv >= 1) or (feat == "golongan_ukt" and rv >= 5) or \
+       (feat == "kode_wilayah" and rv >= 2) or (feat == "persen_kehadiran_smt2" and rv < 75) or \
+       (feat == "mk_cekal_uas_smt2" and rv >= 1):
+        return "Meningkatkan risiko DO"
+    return "Netral terhadap risiko DO"
 
 
 def _generate_recommendations(top_factors: list, mhs_data: dict) -> list:
     """
     Mesin Rekomendasi Preskriptif berbasis rule-based heuristics.
-    Menganalisis Top 3 faktor pemicu dan menghasilkan rekomendasi
-    tindakan konkret bagi pengambil keputusan universitas.
+    Menganalisis Top 3 faktor pemicu dan menghasilkan rekomendasi tindakan.
     """
     recommendations = []
-    seen_actions = set()  # de-duplicate
+    seen_actions = set()
+
+    def add_rec(pilar: str, action: str, prioritas: str):
+        if action not in seen_actions:
+            seen_actions.add(action)
+            recommendations.append({
+                "pilar": pilar,
+                "otoritas": PILLAR_AUTHORITIES[pilar],
+                "tindakan": action,
+                "prioritas": prioritas,
+            })
 
     kehadiran = float(mhs_data.get("persen_kehadiran_smt2", 100.0))
     mk_cekal = int(mhs_data.get("mk_cekal_uas_smt2", 0))
@@ -293,147 +340,120 @@ def _generate_recommendations(top_factors: list, mhs_data: dict) -> list:
     # Rule 1: Kehadiran Rendah / MK Cekal
     if ("persen_kehadiran_smt2" in top_features and kehadiran < 80) or \
        ("mk_cekal_uas_smt2" in top_features and mk_cekal >= 1):
-        action = (
+        add_rec(
+            "Kedisiplinan & Keaktifan",
             "Lakukan pemanggilan mahasiswa oleh Dosen Pembimbing Akademik (DPA) "
             "untuk konseling kedisiplinan. Verifikasi kendala absensi kelas "
             "(masalah transportasi, kesehatan, atau jadwal kerja). "
-            "Koordinasi dengan Kaprodi untuk monitoring kehadiran mingguan."
+            "Koordinasi dengan Kaprodi untuk monitoring kehadiran mingguan.",
+            "Kritis" if kehadiran < 60 or mk_cekal >= 3 else "Penting",
         )
-        if action not in seen_actions:
-            seen_actions.add(action)
-            prioritas = "Kritis" if kehadiran < 60 or mk_cekal >= 3 else "Penting"
-            recommendations.append({
-                "pilar": "Kedisiplinan & Keaktifan",
-                "otoritas": PILLAR_AUTHORITIES["Kedisiplinan & Keaktifan"],
-                "tindakan": action,
-                "prioritas": prioritas,
-            })
 
     # Rule 2: UKT Tinggi & Wilayah Jauh
     if ("golongan_ukt" in top_features and ukt >= 4) or \
        ("kode_wilayah" in top_features and wilayah >= 2):
-        action = (
+        add_rec(
+            "Finansial & Wilayah",
             "Verifikasi kelayakan bantuan beasiswa atau pengajuan keringanan "
             "penyesuaian UKT oleh BAAK/WR II. Pertimbangkan program bantuan "
             "transportasi atau asrama bagi mahasiswa asal luar daerah. "
-            "Evaluasi kondisi sosial-ekonomi keluarga untuk intervensi finansial."
+            "Evaluasi kondisi sosial-ekonomi keluarga untuk intervensi finansial.",
+            "Kritis" if ukt >= 6 and wilayah >= 3 else "Penting",
         )
-        if action not in seen_actions:
-            seen_actions.add(action)
-            prioritas = "Kritis" if ukt >= 6 and wilayah >= 3 else "Penting"
-            recommendations.append({
-                "pilar": "Finansial & Wilayah",
-                "otoritas": PILLAR_AUTHORITIES["Finansial & Wilayah"],
-                "tindakan": action,
-                "prioritas": prioritas,
-            })
 
     # Rule 3: Penurunan IPS / IPS Rendah
     if ("delta_ips" in top_features and delta < 0) or \
        ("ips_smt1" in top_features and ips1 < 2.75) or \
        ("ips_smt2" in top_features and ips2 < 2.75):
-        action = (
+        add_rec(
+            "Akademik",
             "Rekomendasikan program pendampingan tutorial sebaya (peer-tutoring) "
             "atau remedial terarah di tingkat prodi. Identifikasi mata kuliah "
             "dengan nilai terburuk untuk intervensi spesifik. "
-            "Libatkan Kaprodi untuk menyusun rencana pemulihan akademik."
+            "Libatkan Kaprodi untuk menyusun rencana pemulihan akademik.",
+            "Kritis" if ips2 < 2.0 or delta < -0.5 else "Penting",
         )
-        if action not in seen_actions:
-            seen_actions.add(action)
-            prioritas = "Kritis" if ips2 < 2.0 or delta < -0.5 else "Penting"
-            recommendations.append({
-                "pilar": "Akademik",
-                "otoritas": PILLAR_AUTHORITIES["Akademik"],
-                "tindakan": action,
-                "prioritas": prioritas,
-            })
 
     # Rule 4: Cuti Berulang
     if "status_cuti" in top_features and cuti >= 1:
-        action = (
+        add_rec(
+            "Kedisiplinan & Keaktifan",
             "Agendakan audiensi khusus untuk evaluasi status studi dan "
             "penyusunan rencana kelulusan. Eksplorasi penyebab cuti "
             "(finansial, kesehatan, keluarga) untuk intervensi holistik. "
-            "Pertimbangkan perpanjangan masa studi dengan monitoring ketat."
+            "Pertimbangkan perpanjangan masa studi dengan monitoring ketat.",
+            "Kritis" if cuti >= 2 else "Perlu Perhatian",
         )
-        if action not in seen_actions:
-            seen_actions.add(action)
-            prioritas = "Kritis" if cuti >= 2 else "Perlu Perhatian"
-            recommendations.append({
-                "pilar": "Kedisiplinan & Keaktifan",
-                "otoritas": PILLAR_AUTHORITIES["Kedisiplinan & Keaktifan"],
-                "tindakan": action,
-                "prioritas": prioritas,
-            })
 
-    # Sortir berdasarkan prioritas
     priority_order = {"Kritis": 0, "Penting": 1, "Perlu Perhatian": 2}
     recommendations.sort(key=lambda r: priority_order.get(r["prioritas"], 99))
-
     return recommendations
 
 
-def _build_shap_description(feature_name: str, shap_value: float, raw_value: float, asal_daerah: str = "", **kwargs) -> str:
-    """
-    Membuat deskripsi naratif untuk faktor pemicu berdasarkan
-    nama fitur, nilai SHAP, dan nilai asli fitur tersebut.
-    """
+def _build_shap_description(feature_name: str, shap_value: float, raw_value: float, asal_daerah: str = "", total_smt: int = 2) -> str:
+    """Membuat deskripsi naratif untuk faktor pemicu."""
     if feature_name == "delta_ips":
-        if raw_value < 0:
-            return f"IPS turun {abs(raw_value):.2f} poin dari semester 1 ke 2"
-        return f"IPS naik {raw_value:.2f} poin dari semester 1 ke 2"
+        return f"IPS {'turun' if raw_value < 0 else 'naik'} {abs(raw_value):.2f} poin dari semester 1 ke 2"
 
-    if feature_name == "ips_smt1":
-        return f"IPS Semester 1 sebesar {raw_value:.2f}"
-
-    if feature_name == "ips_smt2":
-        return f"IPS Semester 2 sebesar {raw_value:.2f}"
+    if feature_name in ("ips_smt1", "ips_smt2"):
+        smt_num = "1" if feature_name == "ips_smt1" else "2"
+        return f"IPS Semester {smt_num} sebesar {raw_value:.2f}"
 
     if feature_name == "golongan_ukt":
         ukt = int(raw_value)
-        if ukt >= 6:
-            return f"Golongan UKT {ukt} (tinggi — meningkatkan risiko DO)"
-        if ukt >= 4:
-            return f"Golongan UKT {ukt} (sedang)"
-        return f"Golongan UKT {ukt} (rendah — menurunkan risiko DO)"
+        ket = "tinggi — meningkatkan risiko DO" if ukt >= 6 else ("sedang" if ukt >= 4 else "rendah — menurunkan risiko DO")
+        return f"Golongan UKT {ukt} ({ket})"
 
     if feature_name == "status_cuti":
         jumlah_cuti = int(raw_value)
-        # Ambil total semester dari data mahasiswa (default 2)
-        total_smt = int(kwargs.get("total_smt", 2))
         if jumlah_cuti == 0:
             return f"Tidak pernah mengambil cuti dalam {total_smt} semester"
-        elif jumlah_cuti == 1:
-            return f"Mengambil cuti 1 kali dalam {total_smt} semester"
-        else:
-            return f"Mengambil cuti {jumlah_cuti} kali dalam {total_smt} semester"
+        return f"Mengambil cuti {jumlah_cuti} kali dalam {total_smt} semester"
 
     if feature_name == "kode_wilayah":
         val = int(raw_value)
         daerah = asal_daerah or "-"
-        if val == 1:
-            return f"Asal wilayah: {daerah} (Dalam Kecamatan Buleleng, Kabupaten Buleleng)"
-        elif val == 2:
-            return f"Asal wilayah: {daerah} (Luar Kecamatan Buleleng, Kabupaten Buleleng)"
-        else:
-            return f"Asal wilayah: {daerah} (Luar Kecamatan & Kabupaten Buleleng)"
+        desc = "Dalam Kecamatan Buleleng, Kabupaten Buleleng" if val == 1 else (
+            "Luar Kecamatan Buleleng, Kabupaten Buleleng" if val == 2 else "Luar Kecamatan & Kabupaten Buleleng"
+        )
+        return f"Asal wilayah: {daerah} ({desc})"
 
     if feature_name == "persen_kehadiran_smt2":
-        val = raw_value
-        if val >= 90:
-            return f"Tingkat kehadiran {val:.1f}% (sangat baik)"
-        elif val >= 75:
-            return f"Tingkat kehadiran {val:.1f}% (cukup, di atas batas minimum)"
-        else:
-            return f"Tingkat kehadiran {val:.1f}% (di bawah 75% — terancam cekal UAS)"
+        ket = "sangat baik" if raw_value >= 90 else ("cukup, di atas batas minimum" if raw_value >= 75 else "di bawah 75% — terancam cekal UAS")
+        return f"Tingkat kehadiran {raw_value:.1f}% ({ket})"
 
     if feature_name == "mk_cekal_uas_smt2":
         val = int(raw_value)
-        if val == 0:
-            return "Tidak ada MK yang dicekal UAS"
-        return f"{val} mata kuliah dicekal UAS (kehadiran <75% → otomatis nilai E)"
+        return "Tidak ada MK yang dicekal UAS" if val == 0 else f"{val} mata kuliah dicekal UAS (kehadiran <75% → otomatis nilai E)"
 
     return f"{feature_name} = {raw_value}"
+
+
+def _build_mhs_query(fakultas: Optional[str] = None, semester: Optional[int] = None, search: Optional[str] = None):
+    """Membangun query SELECT mahasiswa dengan filter opsional."""
+    conditions, params = [], {}
+    if semester is not None:
+        conditions.append("m.smt = :semester")
+        params["semester"] = semester
+    if fakultas:
+        conditions.append("m.fakultas_prodi ILIKE :fakultas")
+        params["fakultas"] = f"%{fakultas}%"
+    if search:
+        conditions.append("(m.nim ILIKE :search OR m.nama ILIKE :search)")
+        params["search"] = f"%{search}%"
+
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+    query = text(f"""
+        SELECT
+            m.nim, m.nama, m.fakultas_prodi, m.smt,
+            m.ips_smt1, m.ips_smt2, m.golongan_ukt, m.status_cuti,
+            m.kode_wilayah, m.asal_daerah, m.persen_kehadiran_smt2,
+            m.mk_cekal_uas_smt2
+        FROM data_mahasiswa_smt2 m
+        {where_clause}
+        ORDER BY m.nim
+    """)
+    return query, params
 
 
 # ============================================================
@@ -451,52 +471,13 @@ def get_all_mahasiswa(
     dan status risiko untuk tabel utama UI Siprido.
     """
     try:
-        conditions = []
-        params = {}
-        if semester is not None:
-            conditions.append("m.smt = :semester")
-            params["semester"] = semester
-        if fakultas:
-            conditions.append("m.fakultas_prodi ILIKE :fakultas")
-            params["fakultas"] = f"%{fakultas}%"
-        if search:
-            conditions.append("(m.nim ILIKE :search OR m.nama ILIKE :search)")
-            params["search"] = f"%{search}%"
-
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = text(f"""
-            SELECT
-                m.nim, m.nama, m.fakultas_prodi, m.smt,
-                m.ips_smt1, m.ips_smt2, m.golongan_ukt, m.status_cuti,
-                m.kode_wilayah, m.asal_daerah, m.persen_kehadiran_smt2,
-                m.mk_cekal_uas_smt2
-            FROM data_mahasiswa_smt2 m
-            {where_clause}
-            ORDER BY m.nim
-        """)
-
-        upsert_query = text("""
-            INSERT INTO prediksi_do (nim, skor_prediksi, status_risiko, updated_at)
-            VALUES (:nim, :skor, :status, NOW())
-            ON CONFLICT (nim) DO UPDATE
-            SET skor_prediksi = EXCLUDED.skor_prediksi,
-                status_risiko = EXCLUDED.status_risiko,
-                updated_at = NOW();
-        """)
-
+        query, params = _build_mhs_query(fakultas, semester, search)
         with engine.begin() as conn:
             rows = conn.execute(query, params).mappings().all()
             if not rows:
                 return {"total": 0, "data": []}
 
-            # Batch Vectorized XGBoost Prediction
-            df_all = pd.DataFrame([dict(r) for r in rows])
-            df_all["ips_smt1"] = df_all["ips_smt1"].astype(float)
-            df_all["ips_smt2"] = df_all["ips_smt2"].astype(float)
-            df_all["delta_ips"] = df_all["ips_smt2"] - df_all["ips_smt1"]
-            df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].fillna(100.0).astype(float)
-            df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].fillna(0).astype(int)
-
+            df_all = _prepare_df([dict(r) for r in rows])
             X_all = df_all[FEATURE_COLUMNS].astype(float)
             probas_all = model.predict_proba(X_all)[:, 1]
 
@@ -515,7 +496,7 @@ def get_all_mahasiswa(
                 result.append(mhs)
 
             if upsert_batch:
-                conn.execute(upsert_query, upsert_batch)
+                conn.execute(QUERY_UPSERT_PREDIKSI, upsert_batch)
 
         result.sort(key=lambda x: x["skor_prediksi"], reverse=True)
         return {"total": len(result), "data": result}
@@ -530,113 +511,62 @@ def get_all_mahasiswa(
 def get_mahasiswa_detail(nim: str):
     """
     Mengeksekusi XGBoost built-in SHAP (pred_contribs) untuk
-    mahasiswa tertentu dan mengembalikan Top 3 faktor pemicu
-    utama risiko DO.
-
-    Skor prediksi dihitung dengan model.predict_proba() yang sama
-    persis dengan endpoint list, menjamin konsistensi.
+    mahasiswa tertentu dan mengembalikan Top 3 faktor pemicu utama risiko DO.
     """
-    # 1. Ambil data mahasiswa dari database
-    query = text("""
-        SELECT
-            m.nim, m.nama, m.fakultas_prodi, m.smt,
-            m.ips_smt1, m.ips_smt2,
-            m.golongan_ukt, m.status_cuti, m.kode_wilayah,
-            m.asal_daerah,
-            m.persen_kehadiran_smt2, m.mk_cekal_uas_smt2
-        FROM data_mahasiswa_smt2 m
-        WHERE m.nim = :nim
-    """)
-
     with engine.connect() as conn:
-        row = conn.execute(query, {"nim": nim}).mappings().first()
+        row = conn.execute(QUERY_MHS_DETAIL, {"nim": nim}).mappings().first()
 
     if not row:
         raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
 
-    mhs_data = dict(row)
+    df = _prepare_df([dict(row)])
+    mhs_data = df.to_dict(orient="records")[0]
+    X = df[FEATURE_COLUMNS].astype(float)
 
-    # 2. Siapkan fitur untuk Prediksi & SHAP
-    X, mhs_data = _prepare_features(mhs_data)
     proba_raw = float(model.predict_proba(X)[0][1])
     skor_do, status_risiko = _calc_do_score(proba_raw, mhs_data)
-
-    # 3. SHAP Explanation via XGBoost built-in pred_contribs
     shap_values, base_value = _compute_shap_values(X)
 
-    # 5. Ambil Top 3 faktor berdasarkan kontribusi yang variatif & riil
     feature_shap = []
     for i, feat in enumerate(FEATURE_COLUMNS):
         sv = float(shap_values[i])
         rv = float(X.iloc[0][feat])
-
-        # Pembulatan nilai asli agar tidak ada float seperti -0.30000000000000004
         rv_rounded = round(rv, 2)
-
-        # Bobot bobot agar faktor seperti status_cuti, golongan_ukt, dan asal_wilayah bisa masuk Top 3
-        importance_weight = abs(sv)
-        if feat == "status_cuti" and rv >= 1:
-            importance_weight += 0.60 + (rv - 1) * 0.40  # scales: 1→0.60, 2→1.00
-        elif feat == "golongan_ukt" and rv >= 5:
-            importance_weight += 0.45 * (rv - 4)
-        elif feat == "kode_wilayah" and rv == 3:
-            importance_weight += 0.75
-        elif feat == "kode_wilayah" and rv == 2:
-            importance_weight += 0.35
-        elif feat == "delta_ips" and rv < 0:
-            importance_weight += abs(rv) * 1.5
-        elif feat == "mk_cekal_uas_smt2" and rv >= 2:
-            importance_weight += 0.70 + (rv - 2) * 0.25
-        elif feat == "mk_cekal_uas_smt2" and rv == 1:
-            importance_weight += 0.30
-        elif feat == "persen_kehadiran_smt2" and rv < 75:
-            importance_weight += (75 - rv) / 50 * 1.2
+        importance_weight = _calc_feature_weight(feat, sv, rv)
 
         feature_shap.append({
             "feature": feat,
             "label": FEATURE_LABELS[feat],
             "shap_value": round(sv, 4),
-            "abs_shap": importance_weight,
+            "_weight": importance_weight,
             "raw_value": rv_rounded,
             "deskripsi": _build_shap_description(feat, sv, rv_rounded, asal_daerah=mhs_data.get("asal_daerah", ""), total_smt=mhs_data.get("smt", 2)),
         })
 
-    # Sortir berdasarkan kontribusi absolut terbesar
-    feature_shap.sort(key=lambda x: x["abs_shap"], reverse=True)
+    # Sort by weighted importance
+    feature_shap.sort(key=lambda x: x["_weight"], reverse=True)
 
-    # Normalisasi ke persentase kontribusi relatif & tambahkan pilar
-    _normalize_shap_to_percent(feature_shap)
+    # Normalize SHAP to relative percentage & add pillar metadata
+    total_abs = sum(f["_weight"] for f in feature_shap) or 1.0
+    for f in feature_shap:
+        pct = (f["_weight"] / total_abs) * 100
+        f["bobot_persen"] = round(pct, 1)
+        f["level_dampak"] = "Sangat Dominan" if pct >= 50 else ("Signifikan" if pct >= 25 else "Moderat")
+        pilar = FEATURE_PILLAR.get(f["feature"], "Lainnya")
+        f["pilar"] = pilar
+        f["otoritas_pilar"] = PILLAR_AUTHORITIES.get(pilar, "-")
 
-    # Buat salinan top 3 tanpa field internal
-    top_3 = []
-    for f in feature_shap[:3]:
-        entry = {k: v for k, v in f.items() if k != "abs_shap"}
-        sv = f["shap_value"]
-        if sv > 0:
-            entry["kontribusi"] = "Meningkatkan risiko DO"
-        elif sv < 0:
-            entry["kontribusi"] = "Menurunkan risiko DO"
-        else:
-            if (f["feature"] == "delta_ips" and f["raw_value"] < 0) or \
-               (f["feature"] in ["ips_smt1", "ips_smt2"] and f["raw_value"] < 3.0) or \
-               (f["feature"] == "status_cuti" and f["raw_value"] >= 1) or \
-               (f["feature"] == "golongan_ukt" and f["raw_value"] >= 5) or \
-               (f["feature"] == "kode_wilayah" and f["raw_value"] >= 2) or \
-               (f["feature"] == "persen_kehadiran_smt2" and f["raw_value"] < 75) or \
-               (f["feature"] == "mk_cekal_uas_smt2" and f["raw_value"] >= 1):
-                entry["kontribusi"] = "Meningkatkan risiko DO"
-            else:
-                entry["kontribusi"] = "Netral terhadap risiko DO"
-        top_3.append(entry)
+    # Construct top 3 with contextual contribution label
+    top_3 = [
+        {k: v for k, v in f.items() if k != "_weight"} | {"kontribusi": _get_kontribusi(f["feature"], f["shap_value"], f["raw_value"])}
+        for f in feature_shap[:3]
+    ]
 
-    # Generate rekomendasi preskriptif berdasarkan top 3 faktor
     rekomendasi = _generate_recommendations(top_3, mhs_data)
 
-    # Bersihkan abs_shap dari semua faktor
     for f in feature_shap:
-        del f["abs_shap"]
+        del f["_weight"]
 
-    # 6. Susun response
     return {
         "mahasiswa": {
             "nim": mhs_data["nim"],
@@ -677,45 +607,11 @@ def bulk_sync_siakad_data(payload: SIAKADBulkSyncRequest):
     Endpoint integrasi SIAKAD / IES eksternal untuk mengimpor atau meng-update data mahasiswa massal.
     Otomatis menghitung skor prediksi DO real-time & menyinkronkan ke tabel prediksi_do.
     """
-    upsert_mhs = text("""
-        INSERT INTO data_mahasiswa_smt2
-            (nim, nama, fakultas_prodi, smt, ips_smt1, ips_smt2, golongan_ukt, status_cuti, kode_wilayah, asal_daerah, persen_kehadiran_smt2, mk_cekal_uas_smt2)
-        VALUES
-            (:nim, :nama, :fakultas_prodi, :smt, :ips_smt1, :ips_smt2, :golongan_ukt, :status_cuti, :kode_wilayah, :asal_daerah, :persen_kehadiran_smt2, :mk_cekal_uas_smt2)
-        ON CONFLICT (nim) DO UPDATE
-        SET nama = EXCLUDED.nama,
-            fakultas_prodi = EXCLUDED.fakultas_prodi,
-            smt = EXCLUDED.smt,
-            ips_smt1 = EXCLUDED.ips_smt1,
-            ips_smt2 = EXCLUDED.ips_smt2,
-            golongan_ukt = EXCLUDED.golongan_ukt,
-            status_cuti = EXCLUDED.status_cuti,
-            kode_wilayah = EXCLUDED.kode_wilayah,
-            asal_daerah = EXCLUDED.asal_daerah,
-            persen_kehadiran_smt2 = EXCLUDED.persen_kehadiran_smt2,
-            mk_cekal_uas_smt2 = EXCLUDED.mk_cekal_uas_smt2;
-    """)
-
-    upsert_pred = text("""
-        INSERT INTO prediksi_do (nim, skor_prediksi, status_risiko, updated_at)
-        VALUES (:nim, :skor, :status, NOW())
-        ON CONFLICT (nim) DO UPDATE
-        SET skor_prediksi = EXCLUDED.skor_prediksi,
-            status_risiko = EXCLUDED.status_risiko,
-            updated_at = NOW();
-    """)
-
     if not payload.data:
         return {"status": "success", "total_synced": 0, "data": []}
 
     mhs_dicts = [item.model_dump() for item in payload.data]
-    df_sync = pd.DataFrame(mhs_dicts)
-    df_sync["ips_smt1"] = df_sync["ips_smt1"].astype(float)
-    df_sync["ips_smt2"] = df_sync["ips_smt2"].astype(float)
-    df_sync["delta_ips"] = df_sync["ips_smt2"] - df_sync["ips_smt1"]
-    df_sync["persen_kehadiran_smt2"] = df_sync["persen_kehadiran_smt2"].fillna(100.0).astype(float)
-    df_sync["mk_cekal_uas_smt2"] = df_sync["mk_cekal_uas_smt2"].fillna(0).astype(int)
-
+    df_sync = _prepare_df(mhs_dicts)
     X = df_sync[FEATURE_COLUMNS].astype(float)
     probas = model.predict_proba(X)[:, 1]
 
@@ -731,13 +627,13 @@ def bulk_sync_siakad_data(payload: SIAKADBulkSyncRequest):
         })
 
     with engine.begin() as conn:
-        conn.execute(upsert_mhs, mhs_dicts)
-        conn.execute(upsert_pred, synced_items)
+        conn.execute(QUERY_UPSERT_MHS, mhs_dicts)
+        conn.execute(QUERY_UPSERT_PREDIKSI, synced_items)
 
     return {
         "status": "success",
         "total_synced": len(synced_items),
-        "data": synced_items
+        "data": synced_items,
     }
 
 
@@ -757,14 +653,14 @@ def retrain_model_endpoint():
         return {
             "status": "success",
             "message": "Model XGBoost berhasil dilatih ulang & di-hot reload di memory API.",
-            "feature_importances": importance
+            "feature_importances": importance,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal melatih ulang model: {str(e)}")
 
 
 # ============================================================
-# Endpoint: GET /api/v1/analytics/macro-insights
+# Endpoint 5: GET /api/v1/analytics/macro-insights
 # ============================================================
 @app.get("/api/v1/analytics/macro-insights")
 def get_macro_insights(
@@ -777,27 +673,7 @@ def get_macro_insights(
     berdasarkan seluruh mahasiswa (dengan penekanan pada yang berisiko).
     """
     try:
-        conditions = []
-        params = {}
-        if semester is not None:
-            conditions.append("m.smt = :semester")
-            params["semester"] = semester
-        if fakultas:
-            conditions.append("m.fakultas_prodi ILIKE :fakultas")
-            params["fakultas"] = f"%{fakultas}%"
-
-        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-        query = text(f"""
-            SELECT
-                m.nim, m.nama, m.fakultas_prodi, m.smt,
-                m.ips_smt1, m.ips_smt2, m.golongan_ukt, m.status_cuti,
-                m.kode_wilayah, m.asal_daerah, m.persen_kehadiran_smt2,
-                m.mk_cekal_uas_smt2
-            FROM data_mahasiswa_smt2 m
-            {where_clause}
-            ORDER BY m.nim
-        """)
-
+        query, params = _build_mhs_query(fakultas, semester)
         with engine.connect() as conn:
             rows = conn.execute(query, params).mappings().all()
 
@@ -810,87 +686,56 @@ def get_macro_insights(
                 "top_3_faktor_global": [],
             }
 
-        # Batch predict
-        df_all = pd.DataFrame([dict(r) for r in rows])
-        df_all["ips_smt1"] = df_all["ips_smt1"].astype(float)
-        df_all["ips_smt2"] = df_all["ips_smt2"].astype(float)
-        df_all["delta_ips"] = df_all["ips_smt2"] - df_all["ips_smt1"]
-        df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].fillna(100.0).astype(float)
-        df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].fillna(0).astype(int)
-
+        df_all = _prepare_df([dict(r) for r in rows])
         X_all = df_all[FEATURE_COLUMNS].astype(float)
         probas_all = model.predict_proba(X_all)[:, 1]
 
-        # Hitung jumlah berisiko (skor >= 40) untuk info
-        total_berisiko = 0
-        for mhs, proba in zip(df_all.to_dict(orient="records"), probas_all):
-            skor, _ = _calc_do_score(float(proba), mhs)
-            if skor >= 40:
-                total_berisiko += 1
+        mhs_records = df_all.to_dict(orient="records")
+        total_berisiko = sum(
+            1 for mhs, proba in zip(mhs_records, probas_all)
+            if _calc_do_score(float(proba), mhs)[0] >= 40
+        )
 
-        # Batch SHAP computation untuk SELURUH mahasiswa
         total_mahasiswa = len(df_all)
         booster = model.get_booster()
         dmatrix = xgb.DMatrix(X_all, feature_names=FEATURE_COLUMNS)
         contribs = booster.predict(dmatrix, pred_contribs=True)
 
-        # Akumulasi rata-rata persentase kontribusi per pilar & per fitur
         pilar_pct_accum = {"Akademik": 0.0, "Finansial & Wilayah": 0.0, "Kedisiplinan & Keaktifan": 0.0}
         feature_pct_accum = {feat: 0.0 for feat in FEATURE_COLUMNS}
 
+        # Vectorized NumPy row access
+        X_numpy = X_all.to_numpy()
         for row_idx in range(total_mahasiswa):
             shap_vals = contribs[row_idx, :-1]
-            raw_row = X_all.iloc[row_idx]
+            raw_vals = X_numpy[row_idx]
 
-            # Hitung weighted importance per fitur (sama dengan detail endpoint)
-            feature_weights = {}
-            for i, feat in enumerate(FEATURE_COLUMNS):
-                sv = float(shap_vals[i])
-                rv = float(raw_row[feat])
-                w = abs(sv)
-                if feat == "status_cuti" and rv >= 1:
-                    w += 0.60 + (rv - 1) * 0.40
-                elif feat == "golongan_ukt" and rv >= 5:
-                    w += 0.45 * (rv - 4)
-                elif feat == "kode_wilayah" and rv == 3:
-                    w += 0.75
-                elif feat == "kode_wilayah" and rv == 2:
-                    w += 0.35
-                elif feat == "delta_ips" and rv < 0:
-                    w += abs(rv) * 1.5
-                elif feat == "mk_cekal_uas_smt2" and rv >= 2:
-                    w += 0.70 + (rv - 2) * 0.25
-                elif feat == "mk_cekal_uas_smt2" and rv == 1:
-                    w += 0.30
-                elif feat == "persen_kehadiran_smt2" and rv < 75:
-                    w += (75 - rv) / 50 * 1.2
-                feature_weights[feat] = w
+            feature_weights = [
+                _calc_feature_weight(feat, float(shap_vals[i]), float(raw_vals[i]))
+                for i, feat in enumerate(FEATURE_COLUMNS)
+            ]
+            total_w = sum(feature_weights) or 1.0
 
-            # Normalisasi ke 100% untuk mahasiswa ini
-            total_w = sum(feature_weights.values())
-            if total_w == 0:
-                total_w = 1.0
-
-            # Akumulasi persentase per pilar
-            for feat, w in feature_weights.items():
+            for feat, pilar, w in zip(FEATURE_COLUMNS, FEATURE_PILARS_LIST, feature_weights):
                 feat_pct = (w / total_w) * 100
                 feature_pct_accum[feat] += feat_pct
-                pilar = FEATURE_PILLAR.get(feat, "Lainnya")
                 if pilar in pilar_pct_accum:
                     pilar_pct_accum[pilar] += feat_pct
 
-        # Rata-rata persentase per pilar
-        distribusi_pilar = {}
-        for pilar, total_pct in pilar_pct_accum.items():
-            avg_pct = total_pct / total_mahasiswa if total_mahasiswa > 0 else 0
-            distribusi_pilar[pilar] = {
-                "jumlah": round(avg_pct / 100 * total_mahasiswa),
-                "persen": round(avg_pct, 1),
+        distribusi_pilar = {
+            pilar: {
+                "jumlah": round((total_pct / total_mahasiswa) / 100 * total_mahasiswa),
+                "persen": round(total_pct / total_mahasiswa, 1),
             }
+            for pilar, total_pct in pilar_pct_accum.items()
+        }
 
-        # Top 3 faktor global berdasarkan rata-rata kontribusi
-        feature_avg = {feat: (total_pct / total_mahasiswa) for feat, total_pct in feature_pct_accum.items()}
-        sorted_features = sorted(feature_avg.items(), key=lambda x: x[1], reverse=True)[:3]
+        sorted_features = sorted(
+            ((feat, total_pct / total_mahasiswa) for feat, total_pct in feature_pct_accum.items()),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:3]
+
         top_3_global = [
             {
                 "feature": feat,
@@ -914,50 +759,38 @@ def get_macro_insights(
 
 
 # ============================================================
-# Endpoint 5 & 6: Intervensi Bimbingan Akademik DPA
+# Endpoint 6 & 7: Intervensi Bimbingan Akademik DPA
 # ============================================================
 @app.get("/api/v1/mahasiswa/{nim}/intervensi")
 def get_intervensi_history(nim: str):
     """Mengambil riwayat catatan intervensi/bimbingan akademik untuk mahasiswa tertentu."""
-    query = text("""
-        SELECT id, nim, tanggal, jenis_tindakan, catatan, petugas
-        FROM intervensi_mahasiswa
-        WHERE nim = :nim
-        ORDER BY tanggal DESC
-    """)
     with engine.connect() as conn:
-        rows = conn.execute(query, {"nim": nim}).mappings().all()
+        rows = conn.execute(QUERY_GET_INTERVENSI, {"nim": nim}).mappings().all()
 
     return {
         "nim": nim,
         "total": len(rows),
-        "data": [dict(r) for r in rows]
+        "data": [dict(r) for r in rows],
     }
 
 
 @app.post("/api/v1/mahasiswa/{nim}/intervensi")
 def create_intervensi_record(nim: str, payload: IntervensiCreateRequest):
     """Menambahkan catatan tindakan intervensi/bimbingan akademik baru oleh DPA/Kaprodi."""
-    query = text("""
-        INSERT INTO intervensi_mahasiswa (nim, jenis_tindakan, catatan, petugas, tanggal)
-        VALUES (:nim, :jenis_tindakan, :catatan, :petugas, NOW())
-        RETURNING id, nim, tanggal, jenis_tindakan, catatan, petugas;
-    """)
-
     with engine.begin() as conn:
-        exists = conn.execute(text("SELECT nim FROM data_mahasiswa_smt2 WHERE nim = :nim"), {"nim": nim}).first()
+        exists = conn.execute(QUERY_CHECK_MHS_EXISTS, {"nim": nim}).first()
         if not exists:
             raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
 
-        row = conn.execute(query, {
+        row = conn.execute(QUERY_INSERT_INTERVENSI, {
             "nim": nim,
             "jenis_tindakan": payload.jenis_tindakan,
             "catatan": payload.catatan,
-            "petugas": payload.petugas
+            "petugas": payload.petugas,
         }).mappings().first()
 
     return {
         "status": "success",
         "message": "Catatan intervensi berhasil disimpan.",
-        "data": dict(row)
+        "data": dict(row),
     }

@@ -31,7 +31,7 @@ FEATURE_COLUMNS = [
 
 
 def fetch_data() -> pd.DataFrame:
-    """Mengambil data mahasiswa semester 2 dari PostgreSQL atau menggunakan synthetic dataset jika DB offline."""
+    """Mengambil data mahasiswa semester 2 dari PostgreSQL atau synthetic dataset jika DB offline."""
     print("[1/4] Mengambil data mahasiswa...")
     try:
         df = pd.read_sql("SELECT * FROM data_mahasiswa_smt2;", engine)
@@ -51,7 +51,6 @@ def fetch_data() -> pd.DataFrame:
     base_kehadiran[cuti_mask] *= np.random.uniform(0.3, 0.6, cuti_mask.sum())
     base_kehadiran = np.clip(np.round(base_kehadiran, 2), 0, 100)
 
-    # Vektorisasi generate MK cekal
     cekal_limit = np.clip(((75 - base_kehadiran) // 8 + 1).astype(int), 1, 7)
     mk_cekal = np.where(base_kehadiran < 75, np.random.randint(1, cekal_limit + 1), 0)
 
@@ -68,13 +67,6 @@ def fetch_data() -> pd.DataFrame:
         "persen_kehadiran_smt2": base_kehadiran,
         "mk_cekal_uas_smt2": mk_cekal,
     })
-
-
-def create_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Membuat fitur turunan delta_ips."""
-    df = df.copy()
-    df["delta_ips"] = df["ips_smt2"] - df["ips_smt1"]
-    return df
 
 
 def create_target_label(df: pd.DataFrame) -> pd.Series:
@@ -125,12 +117,12 @@ def save_model(model: XGBClassifier) -> None:
 def train_and_save_model():
     """Fungsi programatik untuk melatih ulang model XGBoost dan menyimpannya."""
     df = fetch_data()
-    df = create_features(df)
+    df["delta_ips"] = df["ips_smt2"] - df["ips_smt1"]
     y = create_target_label(df)
-    X = df[FEATURE_COLUMNS].copy().astype(float)
+    X = df[FEATURE_COLUMNS].astype(float)
     model = train_model(X, y)
     save_model(model)
-    importance = dict(zip(X.columns, [float(x) for x in model.feature_importances_]))
+    importance = {col: float(val) for col, val in zip(FEATURE_COLUMNS, model.feature_importances_)}
     return model, importance
 
 
