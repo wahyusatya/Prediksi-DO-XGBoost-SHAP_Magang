@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
 import { X, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, GraduationCap, MapPin, Calendar, BookOpen } from 'lucide-react';
 import { getApiBaseUrl } from '@/utils/api';
+import { getRiskBadge } from './KPICards';
 
 interface ShapValue {
   feature: string;
@@ -101,14 +101,14 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
     const fetchDetail = async () => {
       try {
         setLoading(true);
-        const baseUrl = getApiBaseUrl();
-        const response = await axios.get(`${baseUrl}/api/v1/mahasiswa/${nim}/detail`);
-        // Backend API returns { mahasiswa, prediksi, shap_explanation }
-        setDetail(response.data);
+        const res = await fetch(`${getApiBaseUrl()}/api/v1/mahasiswa/${nim}/detail`);
+        if (!res.ok) throw new Error('Gagal memuat detail mahasiswa.');
+        const data = await res.json();
+        setDetail(data);
         setError(null);
       } catch (err: any) {
         console.error('Error fetching detail:', err);
-        setError(err.response?.data?.detail || err.message || 'Gagal memuat detail mahasiswa.');
+        setError(err.message || 'Gagal memuat detail mahasiswa.');
       } finally {
         setLoading(false);
       }
@@ -116,21 +116,6 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
 
     fetchDetail();
   }, [nim]);
-
-  const getRiskBadge = (status?: string) => {
-    if (!status) return 'bg-gray-100 text-gray-800 border-gray-200';
-    const s = status.toLowerCase();
-    if (s === 'tinggi') return 'bg-red-100 text-red-800 border-red-200';
-    if (s === 'sedang') return 'bg-amber-100 text-amber-800 border-amber-200';
-    if (s === 'rendah') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    return 'bg-gray-100 text-gray-800 border-gray-200';
-  };
-
-  const computeIpk = (m: StudentDetail['mahasiswa']) => {
-    if (typeof m.ipk === 'number') return m.ipk.toFixed(2);
-    if (m.ips_smt1 !== undefined && m.ips_smt2 !== undefined) return ((m.ips_smt1 + m.ips_smt2) / 2).toFixed(2);
-    return '-';
-  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -209,7 +194,7 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <StatCard
                     label="IPK"
-                    value={computeIpk(detail.mahasiswa)}
+                    value={detail.mahasiswa.ipk?.toFixed(2) ?? '-'}
                     sub="Kumulatif"
                     accent="text-blue-700"
                   />

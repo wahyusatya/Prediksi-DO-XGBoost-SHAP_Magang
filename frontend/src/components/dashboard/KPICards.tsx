@@ -4,9 +4,7 @@ export interface Student {
   nim: string;
   nama: string;
   fakultas_prodi?: string;
-  prodi?: string;
   smt: number;
-  probabilitas_do?: number;
   skor_prediksi?: number;
   status_risiko: string;
 }
@@ -15,18 +13,18 @@ interface KPICardsProps {
   data: Student[];
 }
 
-const RISK_COLORS = {
+export const RISK_COLORS = {
   rendah: '#22c55e',
   sedang: '#eab308',
   tinggi: '#ef4444',
 };
 
-function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number) {
-  const angleRad = ((angleDeg - 90) * Math.PI) / 180;
-  return {
-    x: cx + r * Math.cos(angleRad),
-    y: cy + r * Math.sin(angleRad),
-  };
+export function getRiskBadge(status?: string): string {
+  const s = status?.toLowerCase();
+  if (s === 'tinggi') return 'bg-red-100 text-red-800 border-red-200';
+  if (s === 'sedang') return 'bg-amber-100 text-amber-800 border-amber-200';
+  if (s === 'rendah') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+  return 'bg-gray-100 text-gray-800 border-gray-200';
 }
 
 export default function KPICards({ data }: KPICardsProps) {
@@ -35,84 +33,26 @@ export default function KPICards({ data }: KPICardsProps) {
   const mediumRisk = data.filter((s) => s.status_risiko.toLowerCase() === 'sedang').length;
   const lowRisk = data.filter((s) => s.status_risiko.toLowerCase() === 'rendah').length;
 
-  const segments = [
-    { label: 'Risiko Rendah', count: lowRisk, color: RISK_COLORS.rendah },
-    { label: 'Risiko Sedang', count: mediumRisk, color: RISK_COLORS.sedang },
-    { label: 'Risiko Tinggi', count: highRisk, color: RISK_COLORS.tinggi },
-  ].filter((s) => s.count > 0);
+  const lowPct = totalStudents ? (lowRisk / totalStudents) * 100 : 0;
+  const medPct = totalStudents ? (mediumRisk / totalStudents) * 100 : 0;
 
-  const cx = 100;
-  const cy = 100;
-  const outerR = 90;
-  const innerR = 58;
-
-  let currentAngle = 0;
-  const arcs = segments.map((seg) => {
-    const angle = totalStudents > 0 ? (seg.count / totalStudents) * 360 : 0;
-    const startAngle = currentAngle;
-    const endAngle = currentAngle + angle;
-    currentAngle = endAngle;
-
-    if (angle === 0) return null;
-
-    const outerStart = polarToCartesian(cx, cy, outerR, endAngle);
-    const outerEnd = polarToCartesian(cx, cy, outerR, startAngle);
-    const innerStart = polarToCartesian(cx, cy, innerR, startAngle);
-    const innerEnd = polarToCartesian(cx, cy, innerR, endAngle);
-    const largeArc = angle > 180 ? 1 : 0;
-
-    const path =
-      angle >= 359.99
-        ? [
-            `M ${cx} ${cy - outerR}`,
-            `A ${outerR} ${outerR} 0 1 1 ${cx - 0.01} ${cy - outerR}`,
-            `L ${cx - 0.01} ${cy - innerR}`,
-            `A ${innerR} ${innerR} 0 1 0 ${cx} ${cy - innerR}`,
-            'Z',
-          ].join(' ')
-        : [
-            `M ${outerStart.x} ${outerStart.y}`,
-            `A ${outerR} ${outerR} 0 ${largeArc} 0 ${outerEnd.x} ${outerEnd.y}`,
-            `L ${innerStart.x} ${innerStart.y}`,
-            `A ${innerR} ${innerR} 0 ${largeArc} 1 ${innerEnd.x} ${innerEnd.y}`,
-            'Z',
-          ].join(' ');
-
-    return { ...seg, path };
-  }).filter(Boolean);
+  const gradient = totalStudents === 0
+    ? '#f3f4f6'
+    : `conic-gradient(${RISK_COLORS.rendah} 0% ${lowPct}%, ${RISK_COLORS.sedang} ${lowPct}% ${lowPct + medPct}%, ${RISK_COLORS.tinggi} ${lowPct + medPct}% 100%)`;
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-8">
       <div className="flex flex-col md:flex-row items-center gap-8">
         <div className="relative flex-shrink-0">
-          <svg viewBox="0 0 200 200" className="w-52 h-52">
-            {totalStudents === 0 ? (
-              <circle cx={cx} cy={cy} r={outerR} fill="#f3f4f6" />
-            ) : (
-              arcs.map((arc, i) => (
-                <path key={i} d={arc!.path} fill={arc!.color} stroke="white" strokeWidth="2" />
-              ))
-            )}
-            <circle cx={cx} cy={cy} r={innerR - 2} fill="white" />
-            <text
-              x={cx}
-              y={cy - 6}
-              textAnchor="middle"
-              className="fill-gray-900"
-              style={{ fontSize: '28px', fontWeight: 700 }}
-            >
-              {totalStudents}
-            </text>
-            <text
-              x={cx}
-              y={cy + 16}
-              textAnchor="middle"
-              className="fill-gray-500"
-              style={{ fontSize: '11px', fontWeight: 500 }}
-            >
-              Total Mahasiswa
-            </text>
-          </svg>
+          <div
+            className="w-48 h-48 rounded-full flex items-center justify-center transition-all duration-500"
+            style={{ background: gradient }}
+          >
+            <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center shadow-xs">
+              <span className="text-3xl font-bold text-gray-900">{totalStudents}</span>
+              <span className="text-[11px] font-medium text-gray-500">Total Mahasiswa</span>
+            </div>
+          </div>
         </div>
 
         <div className="flex-1 w-full">

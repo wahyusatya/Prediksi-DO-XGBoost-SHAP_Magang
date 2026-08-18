@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
 import Header from '@/components/layout/Header';
 import KPICards, { Student } from '@/components/dashboard/KPICards';
 import StudentTable, { extractFakultas } from '@/components/dashboard/StudentTable';
@@ -20,16 +19,17 @@ export default function DashboardPage() {
     const fetchData = async () => {
       try {
         setLoading(true);
-        const baseUrl = getApiBaseUrl();
-        const response = await axios.get(`${baseUrl}/api/v1/mahasiswa?t=${Date.now()}`, {
-          headers: { 'Cache-Control': 'no-cache, no-store' }
+        const res = await fetch(`${getApiBaseUrl()}/api/v1/mahasiswa?t=${Date.now()}`, {
+          cache: 'no-store',
         });
-        const students = Array.isArray(response.data) ? response.data : response.data?.data || [];
+        if (!res.ok) throw new Error('Gagal memuat data dari server.');
+        const result = await res.json();
+        const students = Array.isArray(result) ? result : result?.data || [];
         setData(students);
         setError(null);
       } catch (err: any) {
         console.error('Error fetching data:', err);
-        setError(err.response?.data?.detail || err.message || 'Gagal memuat data dari server.');
+        setError(err.message || 'Gagal memuat data dari server.');
       } finally {
         setLoading(false);
       }
@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const fakultasOptions = useMemo(() => {
     const set = new Set<string>();
     data.forEach((s) => {
-      const fak = extractFakultas(s.fakultas_prodi || s.prodi);
+      const fak = extractFakultas(s.fakultas_prodi);
       if (fak) set.add(fak);
     });
     return Array.from(set).sort();
@@ -50,7 +50,7 @@ export default function DashboardPage() {
   const filteredData = useMemo(() => {
     if (!selectedFakultas) return data;
     return data.filter(
-      (s) => extractFakultas(s.fakultas_prodi || s.prodi) === selectedFakultas
+      (s) => extractFakultas(s.fakultas_prodi) === selectedFakultas
     );
   }, [data, selectedFakultas]);
 

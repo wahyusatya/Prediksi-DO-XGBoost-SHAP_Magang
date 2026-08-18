@@ -167,24 +167,14 @@ def _prepare_features(mhs_data: dict) -> tuple[pd.DataFrame, dict]:
     return X.astype(float), data
 
 
-def _predict_do_score(mhs_data: dict) -> tuple[int, str]:
+def _calc_do_score(proba_raw: float, data: dict) -> tuple[int, str]:
     """
     Menghitung skor prediksi DO secara konsisten untuk dashboard & detail.
-    Menggunakan kombinasi probabilitas XGBoost dan pembobotan multi-faktor kontinu
-    agar skor bergradien halus (5% - 98%) tanpa nilai hardcoded statis.
-
-    Aturan Mutlak Bisnis:
-    - ips_smt1 < 3.00 => Risiko TINGGI (Skor 70% - 98%)
-    - ips_smt1 >= 3.00 + Faktor Pemicu Risiko => Risiko SEDANG (Skor 40% - 69%)
-    - ips_smt1 >= 3.00 + Tanpa Pemicu => Risiko RENDAH (Skor 5% - 39%)
+    Menggunakan kombinasi probabilitas XGBoost dan pembobotan multi-faktor kontinu.
     """
-    X, data = _prepare_features(mhs_data)
-
-    proba_raw = float(model.predict_proba(X)[0][1])
-
     ips1 = float(data.get("ips_smt1", 0.0))
     ips2 = float(data.get("ips_smt2", 0.0))
-    delta = float(data.get("delta_ips", 0.0))
+    delta = float(data.get("delta_ips", ips2 - ips1))
     cuti = int(data.get("status_cuti", 0))
     ukt = int(data.get("golongan_ukt", 1))
     wilayah = int(data.get("kode_wilayah", 1))
@@ -192,18 +182,8 @@ def _predict_do_score(mhs_data: dict) -> tuple[int, str]:
     mk_cekal = int(data.get("mk_cekal_uas_smt2", 0))
 
     if ips1 < 3.00:
-        # Kategori TINGGI (70% - 98%)
-        base = 70.0
-        p_ips = (3.00 - ips1) * 8.0
-        p_cuti = cuti * 4.0
-        p_cekal = mk_cekal * 2.0
-        p_kehadiran = max(0.0, (75.0 - kehadiran) * 0.25)
-        p_ukt = (ukt - 1) * 0.7
-        p_wilayah = (wilayah - 1) * 1.0
-
-        calculated_skor = base + p_ips + p_cuti + p_cekal + p_kehadiran + p_ukt + p_wilayah
-        final_float = 0.40 * (proba_raw * 100) + 0.60 * calculated_skor
-        final_float = min(98.0, max(70.0, final_float))
+        base = 70.0 + (3.00 - ips1) * 8.0 + cuti * 4.0 + mk_cekal * 2.0 + max(0.0, (75.0 - kehadiran) * 0.25) + (ukt - 1) * 0.7 + (wilayah - 1) * 1.0
+        final_float = min(98.0, max(70.0, 0.40 * (proba_raw * 100) + 0.60 * base))
     else:
         has_trigger = (
             (cuti >= 1)
@@ -214,31 +194,15 @@ def _predict_do_score(mhs_data: dict) -> tuple[int, str]:
             or (ukt >= 3 and wilayah >= 2)
         )
         if has_trigger:
-            # Kategori SEDANG (40% - 69%)
-            base = 40.0
-            p_cuti = cuti * 10.0
-            p_cekal = mk_cekal * 6.0
-            p_kehadiran = max(0.0, (85.0 - kehadiran) * 0.4)
-            p_delta = abs(delta) * 18.0 if delta < 0 else 0.0
-            p_ukt = (ukt - 1) * 1.8
-            p_wilayah = (wilayah - 1) * 2.5
-
-            calculated_skor = base + p_cuti + p_cekal + p_kehadiran + p_delta + p_ukt + p_wilayah
-            final_float = min(69.0, max(40.0, calculated_skor))
+            base = 40.0 + cuti * 10.0 + mk_cekal * 6.0 + max(0.0, (85.0 - kehadiran) * 0.4) + (abs(delta) * 18.0 if delta < 0 else 0.0) + (ukt - 1) * 1.8 + (wilayah - 1) * 2.5
+            final_float = min(69.0, max(40.0, base))
         else:
-            # Kategori RENDAH (5% - 39%)
-            base = 25.0
-            ips_bonus = (ips1 - 3.00) * 12.0
-            ips2_bonus = (ips2 - 3.00) * 8.0
-            kehadiran_bonus = (kehadiran - 85.0) * 0.5 if kehadiran > 85.0 else 0.0
-            ukt_penalty = (ukt - 1) * 1.5
-
-            calculated_skor = base - ips_bonus - ips2_bonus - kehadiran_bonus + ukt_penalty
-            final_float = 0.50 * (proba_raw * 100) + 0.50 * calculated_skor
-            final_float = min(39.0, max(5.0, final_float))
+            base = 25.0 - (ips1 - 3.00) * 12.0 - (ips2 - 3.00) * 8.0 - (max(0.0, kehadiran - 85.0) * 0.5) + (ukt - 1) * 1.5
+            final_float = min(39.0, max(5.0, 0.50 * (proba_raw * 100) + 0.50 * base))
 
     skor_do = int(round(final_float))
     return skor_do, _klasifikasi_risiko(skor_do)
+
 
 
 def _compute_shap_values(X: pd.DataFrame):
@@ -336,26 +300,29 @@ def get_all_mahasiswa(
     """
     Mengembalikan list seluruh mahasiswa beserta skor prediksi (%)
     dan status risiko untuk tabel utama UI Siprido.
-
-    Skor dihitung real-time ter-vektorisasi (Batch Vectorization) untuk efisiensi CPU maksimal
-    dan disinkronisasi ke tabel prediksi_do secara aman.
     """
     try:
-        query = text("""
+        conditions = []
+        params = {}
+        if semester is not None:
+            conditions.append("m.smt = :semester")
+            params["semester"] = semester
+        if fakultas:
+            conditions.append("m.fakultas_prodi ILIKE :fakultas")
+            params["fakultas"] = f"%{fakultas}%"
+        if search:
+            conditions.append("(m.nim ILIKE :search OR m.nama ILIKE :search)")
+            params["search"] = f"%{search}%"
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = text(f"""
             SELECT
-                m.nim,
-                m.nama,
-                m.fakultas_prodi,
-                m.smt,
-                m.ips_smt1,
-                m.ips_smt2,
-                m.golongan_ukt,
-                m.status_cuti,
-                m.kode_wilayah,
-                m.asal_daerah,
-                m.persen_kehadiran_smt2,
+                m.nim, m.nama, m.fakultas_prodi, m.smt,
+                m.ips_smt1, m.ips_smt2, m.golongan_ukt, m.status_cuti,
+                m.kode_wilayah, m.asal_daerah, m.persen_kehadiran_smt2,
                 m.mk_cekal_uas_smt2
             FROM data_mahasiswa_smt2 m
+            {where_clause}
             ORDER BY m.nim
         """)
 
@@ -369,121 +336,38 @@ def get_all_mahasiswa(
         """)
 
         with engine.begin() as conn:
-            rows = conn.execute(query).mappings().all()
-
+            rows = conn.execute(query, params).mappings().all()
             if not rows:
                 return {"total": 0, "data": []}
 
-            # Batch Vectorized XGBoost Prediction for high-performance CPU processing
+            # Batch Vectorized XGBoost Prediction
             df_all = pd.DataFrame([dict(r) for r in rows])
             df_all["ips_smt1"] = df_all["ips_smt1"].astype(float)
             df_all["ips_smt2"] = df_all["ips_smt2"].astype(float)
             df_all["delta_ips"] = df_all["ips_smt2"] - df_all["ips_smt1"]
-            df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].astype(float)
-            df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].astype(int)
+            df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].fillna(100.0).astype(float)
+            df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].fillna(0).astype(int)
 
             X_all = df_all[FEATURE_COLUMNS].astype(float)
             probas_all = model.predict_proba(X_all)[:, 1]
 
-            result = []
-            for i, row in enumerate(rows):
-                mhs_data = dict(row)
-                proba_raw = float(probas_all[i])
+            result, upsert_batch = [], []
+            for mhs, proba in zip(df_all.to_dict(orient="records"), probas_all):
+                skor, status = _calc_do_score(float(proba), mhs)
+                upsert_batch.append({"nim": mhs["nim"], "skor": skor, "status": status})
 
-                ips1 = float(mhs_data.get("ips_smt1", 0.0))
-                ips2 = float(mhs_data.get("ips_smt2", 0.0))
-                delta = ips2 - ips1
-                cuti = int(mhs_data.get("status_cuti", 0))
-                ukt = int(mhs_data.get("golongan_ukt", 1))
-                wilayah = int(mhs_data.get("kode_wilayah", 1))
-                kehadiran = float(mhs_data.get("persen_kehadiran_smt2", 100.0))
-                mk_cekal = int(mhs_data.get("mk_cekal_uas_smt2", 0))
-
-                if ips1 < 3.00:
-                    base = 70.0
-                    p_ips = (3.00 - ips1) * 8.0
-                    p_cuti = cuti * 4.0
-                    p_cekal = mk_cekal * 2.0
-                    p_kehadiran = max(0.0, (75.0 - kehadiran) * 0.25)
-                    p_ukt = (ukt - 1) * 0.7
-                    p_wilayah = (wilayah - 1) * 1.0
-
-                    calculated_skor = base + p_ips + p_cuti + p_cekal + p_kehadiran + p_ukt + p_wilayah
-                    final_float = 0.40 * (proba_raw * 100) + 0.60 * calculated_skor
-                    final_float = min(98.0, max(70.0, final_float))
-                else:
-                    has_trigger = (
-                        (cuti >= 1)
-                        or (mk_cekal >= 1)
-                        or (kehadiran < 80.0)
-                        or (delta < -0.15)
-                        or (ukt >= 4 and delta < 0)
-                        or (ukt >= 3 and wilayah >= 2)
-                    )
-                    if has_trigger:
-                        base = 40.0
-                        p_cuti = cuti * 10.0
-                        p_cekal = mk_cekal * 6.0
-                        p_kehadiran = max(0.0, (85.0 - kehadiran) * 0.4)
-                        p_delta = abs(delta) * 18.0 if delta < 0 else 0.0
-                        p_ukt = (ukt - 1) * 1.8
-                        p_wilayah = (wilayah - 1) * 2.5
-
-                        calculated_skor = base + p_cuti + p_cekal + p_kehadiran + p_delta + p_ukt + p_wilayah
-                        final_float = min(69.0, max(40.0, calculated_skor))
-                    else:
-                        base = 25.0
-                        ips_bonus = (ips1 - 3.00) * 12.0
-                        ips2_bonus = (ips2 - 3.00) * 8.0
-                        kehadiran_bonus = (kehadiran - 85.0) * 0.5 if kehadiran > 85.0 else 0.0
-                        ukt_penalty = (ukt - 1) * 1.5
-
-                        calculated_skor = base - ips_bonus - ips2_bonus - kehadiran_bonus + ukt_penalty
-                        final_float = 0.50 * (proba_raw * 100) + 0.50 * calculated_skor
-                        final_float = min(39.0, max(5.0, final_float))
-
-                skor_prediksi = int(round(final_float))
-                status_risiko = _klasifikasi_risiko(skor_prediksi)
-
-                # Sync ke tabel prediksi_do di database
-                conn.execute(upsert_query, {
-                    "nim": row["nim"],
-                    "skor": skor_prediksi,
-                    "status": status_risiko
-                })
-
-                # Filtering opsional
-                if fakultas and fakultas.lower() not in row["fakultas_prodi"].lower():
+                if status_risiko and status.lower() != status_risiko.lower():
                     continue
-                if status_risiko_param := status_risiko:
-                    if status_risiko and status_risiko.lower() != status_risiko_param.lower():
-                        continue
-                if semester and row["smt"] != semester:
-                    continue
-                if search:
-                    q = search.lower()
-                    if q not in row["nim"].lower() and q not in row["nama"].lower():
-                        continue
 
-                result.append({
-                    "nim": row["nim"],
-                    "nama": row["nama"],
-                    "fakultas_prodi": row["fakultas_prodi"],
-                    "semester": row["smt"],
-                    "ips_smt1": float(row["ips_smt1"]),
-                    "ips_smt2": float(row["ips_smt2"]),
-                    "golongan_ukt": row["golongan_ukt"],
-                    "status_cuti": row["status_cuti"],
-                    "kode_wilayah": row["kode_wilayah"],
-                    "asal_daerah": row.get("asal_daerah", "-"),
-                    "wilayah": WILAYAH_LABELS.get(row["kode_wilayah"], "-"),
-                    "persen_kehadiran_smt2": float(row.get("persen_kehadiran_smt2", 100.0)),
-                    "mk_cekal_uas_smt2": int(row.get("mk_cekal_uas_smt2", 0)),
-                    "skor_prediksi": skor_prediksi,
-                    "status_risiko": status_risiko,
-                })
+                mhs["semester"] = mhs["smt"]
+                mhs["wilayah"] = WILAYAH_LABELS.get(mhs["kode_wilayah"], "-")
+                mhs["skor_prediksi"] = skor
+                mhs["status_risiko"] = status
+                result.append(mhs)
 
-        # Urutkan berdasarkan skor prediksi tertinggi
+            if upsert_batch:
+                conn.execute(upsert_query, upsert_batch)
+
         result.sort(key=lambda x: x["skor_prediksi"], reverse=True)
         return {"total": len(result), "data": result}
     except Exception as e:
@@ -523,13 +407,12 @@ def get_mahasiswa_detail(nim: str):
 
     mhs_data = dict(row)
 
-    # 2. Prediksi skor DO (konsisten dengan endpoint list)
-    skor_do, status_risiko = _predict_do_score(mhs_data)
-
-    # 3. Siapkan fitur untuk SHAP
+    # 2. Siapkan fitur untuk Prediksi & SHAP
     X, mhs_data = _prepare_features(mhs_data)
+    proba_raw = float(model.predict_proba(X)[0][1])
+    skor_do, status_risiko = _calc_do_score(proba_raw, mhs_data)
 
-    # 4. SHAP Explanation via XGBoost built-in pred_contribs
+    # 3. SHAP Explanation via XGBoost built-in pred_contribs
     shap_values, base_value = _compute_shap_values(X)
 
     # 5. Ambil Top 3 faktor berdasarkan kontribusi yang variatif & riil
@@ -666,19 +549,34 @@ def bulk_sync_siakad_data(payload: SIAKADBulkSyncRequest):
             updated_at = NOW();
     """)
 
-    synced_items = []
-    with engine.begin() as conn:
-        for item in payload.data:
-            mhs_dict = item.model_dump()
-            conn.execute(upsert_mhs, mhs_dict)
+    if not payload.data:
+        return {"status": "success", "total_synced": 0, "data": []}
 
-            skor_do, status = _predict_do_score(mhs_dict)
-            conn.execute(upsert_pred, {
-                "nim": item.nim,
-                "skor": skor_do,
-                "status": status
-            })
-            synced_items.append({"nim": item.nim, "skor_prediksi": skor_do, "status_risiko": status})
+    mhs_dicts = [item.model_dump() for item in payload.data]
+    df_sync = pd.DataFrame(mhs_dicts)
+    df_sync["ips_smt1"] = df_sync["ips_smt1"].astype(float)
+    df_sync["ips_smt2"] = df_sync["ips_smt2"].astype(float)
+    df_sync["delta_ips"] = df_sync["ips_smt2"] - df_sync["ips_smt1"]
+    df_sync["persen_kehadiran_smt2"] = df_sync["persen_kehadiran_smt2"].fillna(100.0).astype(float)
+    df_sync["mk_cekal_uas_smt2"] = df_sync["mk_cekal_uas_smt2"].fillna(0).astype(int)
+
+    X = df_sync[FEATURE_COLUMNS].astype(float)
+    probas = model.predict_proba(X)[:, 1]
+
+    synced_items = []
+    for mhs, proba in zip(df_sync.to_dict(orient="records"), probas):
+        skor_do, status = _calc_do_score(float(proba), mhs)
+        synced_items.append({
+            "nim": mhs["nim"],
+            "skor": skor_do,
+            "status": status,
+            "skor_prediksi": skor_do,
+            "status_risiko": status,
+        })
+
+    with engine.begin() as conn:
+        conn.execute(upsert_mhs, mhs_dicts)
+        conn.execute(upsert_pred, synced_items)
 
     return {
         "status": "success",
@@ -734,11 +632,6 @@ def get_intervensi_history(nim: str):
 @app.post("/api/v1/mahasiswa/{nim}/intervensi")
 def create_intervensi_record(nim: str, payload: IntervensiCreateRequest):
     """Menambahkan catatan tindakan intervensi/bimbingan akademik baru oleh DPA/Kaprodi."""
-    with engine.connect() as conn:
-        exists = conn.execute(text("SELECT nim FROM data_mahasiswa_smt2 WHERE nim = :nim"), {"nim": nim}).first()
-    if not exists:
-        raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
-
     query = text("""
         INSERT INTO intervensi_mahasiswa (nim, jenis_tindakan, catatan, petugas, tanggal)
         VALUES (:nim, :jenis_tindakan, :catatan, :petugas, NOW())
@@ -746,6 +639,10 @@ def create_intervensi_record(nim: str, payload: IntervensiCreateRequest):
     """)
 
     with engine.begin() as conn:
+        exists = conn.execute(text("SELECT nim FROM data_mahasiswa_smt2 WHERE nim = :nim"), {"nim": nim}).first()
+        if not exists:
+            raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
+
         row = conn.execute(query, {
             "nim": nim,
             "jenis_tindakan": payload.jenis_tindakan,

@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Student } from './KPICards';
+import { Student, getRiskBadge } from './KPICards';
 import { ChevronRight, ChevronLeft, Search, Filter } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
@@ -26,22 +26,13 @@ export default function StudentTable({
 }: StudentTableProps) {
   const [searchNim, setSearchNim] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  
-  const getRiskBadge = (status?: string) => {
-    if (!status) return 'bg-gray-100 text-gray-800 border-gray-200';
-    const s = status.toLowerCase();
-    if (s === 'tinggi') return 'bg-red-100 text-red-800 border-red-200';
-    if (s === 'sedang') return 'bg-amber-100 text-amber-800 border-amber-200';
-    if (s === 'rendah') return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    return 'bg-gray-100 text-gray-800 border-gray-200';
-  };
 
   const filteredData = useMemo(() => {
     return data.filter((student) => {
       const matchesNim = student.nim.toLowerCase().includes(searchNim.toLowerCase());
       const matchesFakultas =
         !selectedFakultas ||
-        extractFakultas(student.fakultas_prodi || student.prodi) === selectedFakultas;
+        extractFakultas(student.fakultas_prodi) === selectedFakultas;
       return matchesNim && matchesFakultas;
     });
   }, [data, searchNim, selectedFakultas]);
@@ -131,10 +122,10 @@ export default function StudentTable({
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{student.nim}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{student.nama}</td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {student.fakultas_prodi || student.prodi || '-'}
+                    {student.fakultas_prodi || '-'}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                    {student.smt || (student as any).semester || '2'}
+                    {student.smt ?? 2}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-center">
                     <span className="text-sm font-medium text-gray-900">
