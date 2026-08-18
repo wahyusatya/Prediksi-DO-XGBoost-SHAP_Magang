@@ -101,8 +101,6 @@ FEATURE_PILLAR = {
     "status_cuti": "Kedisiplinan & Keaktifan",
 }
 
-FEATURE_PILARS_LIST = [FEATURE_PILLAR.get(f, "Lainnya") for f in FEATURE_COLUMNS]
-
 PILLAR_AUTHORITIES = {
     "Akademik": "WR I / Dekan / Kaprodi",
     "Finansial & Wilayah": "WR II / Biro Keuangan / BAAK",
@@ -519,53 +517,49 @@ def get_mahasiswa_detail(nim: str):
     if not row:
         raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
 
-    df = _prepare_df([dict(row)])
-    mhs_data = df.to_dict(orient="records")[0]
-    X = df[FEATURE_COLUMNS].astype(float)
+    mhs_data = dict(row)
+    mhs_data["delta_ips"] = float(mhs_data["ips_smt2"]) - float(mhs_data["ips_smt1"])
+    mhs_data["persen_kehadiran_smt2"] = float(mhs_data.get("persen_kehadiran_smt2") or 100.0)
+    mhs_data["mk_cekal_uas_smt2"] = int(mhs_data.get("mk_cekal_uas_smt2") or 0)
+    X = pd.DataFrame([{col: float(mhs_data[col]) for col in FEATURE_COLUMNS}])
 
     proba_raw = float(model.predict_proba(X)[0][1])
     skor_do, status_risiko = _calc_do_score(proba_raw, mhs_data)
     shap_values, base_value = _compute_shap_values(X)
 
-    feature_shap = []
+    feature_items = []
     for i, feat in enumerate(FEATURE_COLUMNS):
         sv = float(shap_values[i])
         rv = float(X.iloc[0][feat])
         rv_rounded = round(rv, 2)
-        importance_weight = _calc_feature_weight(feat, sv, rv)
-
-        feature_shap.append({
+        w = _calc_feature_weight(feat, sv, rv)
+        pilar = FEATURE_PILLAR.get(feat, "Lainnya")
+        feature_items.append((w, {
             "feature": feat,
             "label": FEATURE_LABELS[feat],
             "shap_value": round(sv, 4),
-            "_weight": importance_weight,
             "raw_value": rv_rounded,
             "deskripsi": _build_shap_description(feat, sv, rv_rounded, asal_daerah=mhs_data.get("asal_daerah", ""), total_smt=mhs_data.get("smt", 2)),
-        })
+            "pilar": pilar,
+            "otoritas_pilar": PILLAR_AUTHORITIES.get(pilar, "-"),
+        }))
 
-    # Sort by weighted importance
-    feature_shap.sort(key=lambda x: x["_weight"], reverse=True)
+    feature_items.sort(key=lambda item: item[0], reverse=True)
+    total_abs = sum(w for w, _ in feature_items) or 1.0
 
-    # Normalize SHAP to relative percentage & add pillar metadata
-    total_abs = sum(f["_weight"] for f in feature_shap) or 1.0
-    for f in feature_shap:
-        pct = (f["_weight"] / total_abs) * 100
+    feature_shap = []
+    for w, f in feature_items:
+        pct = (w / total_abs) * 100
         f["bobot_persen"] = round(pct, 1)
         f["level_dampak"] = "Sangat Dominan" if pct >= 50 else ("Signifikan" if pct >= 25 else "Moderat")
-        pilar = FEATURE_PILLAR.get(f["feature"], "Lainnya")
-        f["pilar"] = pilar
-        f["otoritas_pilar"] = PILLAR_AUTHORITIES.get(pilar, "-")
+        feature_shap.append(f)
 
-    # Construct top 3 with contextual contribution label
     top_3 = [
-        {k: v for k, v in f.items() if k != "_weight"} | {"kontribusi": _get_kontribusi(f["feature"], f["shap_value"], f["raw_value"])}
+        f | {"kontribusi": _get_kontribusi(f["feature"], f["shap_value"], f["raw_value"])}
         for f in feature_shap[:3]
     ]
 
     rekomendasi = _generate_recommendations(top_3, mhs_data)
-
-    for f in feature_shap:
-        del f["_weight"]
 
     return {
         "mahasiswa": {
@@ -701,27 +695,23 @@ def get_macro_insights(
         dmatrix = xgb.DMatrix(X_all, feature_names=FEATURE_COLUMNS)
         contribs = booster.predict(dmatrix, pred_contribs=True)
 
-        pilar_pct_accum = {"Akademik": 0.0, "Finansial & Wilayah": 0.0, "Kedisiplinan & Keaktifan": 0.0}
         feature_pct_accum = {feat: 0.0 for feat in FEATURE_COLUMNS}
-
-        # Vectorized NumPy row access
         X_numpy = X_all.to_numpy()
         for row_idx in range(total_mahasiswa):
             shap_vals = contribs[row_idx, :-1]
             raw_vals = X_numpy[row_idx]
-
-            feature_weights = [
+            weights = [
                 _calc_feature_weight(feat, float(shap_vals[i]), float(raw_vals[i]))
                 for i, feat in enumerate(FEATURE_COLUMNS)
             ]
-            total_w = sum(feature_weights) or 1.0
+            total_w = sum(weights) or 1.0
+            for feat, w in zip(FEATURE_COLUMNS, weights):
+                feature_pct_accum[feat] += (w / total_w) * 100
 
-            for feat, pilar, w in zip(FEATURE_COLUMNS, FEATURE_PILARS_LIST, feature_weights):
-                feat_pct = (w / total_w) * 100
-                feature_pct_accum[feat] += feat_pct
-                if pilar in pilar_pct_accum:
-                    pilar_pct_accum[pilar] += feat_pct
-
+        pilar_pct_accum = {
+            pilar: sum(feature_pct_accum[feat] for feat, p in FEATURE_PILLAR.items() if p == pilar)
+            for pilar in PILLAR_AUTHORITIES
+        }
         distribusi_pilar = {
             pilar: {
                 "jumlah": round((total_pct / total_mahasiswa) / 100 * total_mahasiswa),

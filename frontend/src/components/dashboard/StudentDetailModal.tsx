@@ -308,13 +308,10 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                 </h4>
                 
                 <div className="space-y-3">
-                  {(() => {
-                    const topFactors = detail.shap_explanation?.top_3_faktor || [];
-                    if (topFactors.length === 0) {
-                      return <p className="text-sm text-gray-500 italic">Data penjelasan SHAP tidak tersedia.</p>;
-                    }
-
-                    return topFactors.map((factor, idx) => {
+                  {!detail.shap_explanation?.top_3_faktor?.length ? (
+                    <p className="text-sm text-gray-500 italic">Data penjelasan SHAP tidak tersedia.</p>
+                  ) : (
+                    detail.shap_explanation.top_3_faktor.map((factor, idx) => {
                       const isIncreasing = factor.kontribusi?.toLowerCase().includes('meningkatkan') || factor.shap_value > 0;
                       const isDecreasing = factor.kontribusi?.toLowerCase().includes('menurunkan') || factor.shap_value < 0;
                       const bobotPersen = factor.bobot_persen ?? 0;
@@ -375,8 +372,8 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                           </div>
                         </div>
                       );
-                    });
-                  })()}
+                    })
+                  )}
                 </div>
               </div>
 

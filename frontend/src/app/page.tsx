@@ -25,8 +25,7 @@ export default function DashboardPage() {
         });
         if (!res.ok) throw new Error('Gagal memuat data dari server.');
         const result = await res.json();
-        const students = Array.isArray(result) ? result : result?.data || [];
-        setData(students);
+        setData(result.data || []);
         setError(null);
       } catch (err: any) {
         console.error('Error fetching data:', err);
