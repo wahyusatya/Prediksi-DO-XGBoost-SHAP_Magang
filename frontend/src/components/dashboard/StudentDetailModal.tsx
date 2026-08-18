@@ -1,7 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { X, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, GraduationCap, MapPin, Calendar, BookOpen } from 'lucide-react';
+import { X, Loader2, AlertCircle, TrendingUp, TrendingDown, Minus, GraduationCap, MapPin, Calendar, BookOpen, ClipboardCopy, Check, Wallet, UserCheck, ShieldAlert } from 'lucide-react';
 import { getApiBaseUrl } from '@/utils/api';
 import { getRiskBadge } from './KPICards';
+
+interface Rekomendasi {
+  pilar: string;
+  otoritas: string;
+  tindakan: string;
+  prioritas: string;
+}
 
 interface ShapValue {
   feature: string;
@@ -10,6 +17,10 @@ interface ShapValue {
   raw_value: number;
   deskripsi: string;
   kontribusi: string;
+  bobot_persen?: number;
+  level_dampak?: string;
+  pilar?: string;
+  otoritas_pilar?: string;
 }
 
 interface StudentDetail {
@@ -38,12 +49,33 @@ interface StudentDetail {
     base_value?: number;
     top_3_faktor: ShapValue[];
     semua_faktor?: ShapValue[];
+    rekomendasi_intervensi?: Rekomendasi[];
   };
 }
 
 interface StudentDetailModalProps {
   nim: string;
   onClose: () => void;
+}
+
+/* ── Badge styling per pilar ──────────────────────────── */
+function getPilarBadge(pilar?: string): { bg: string; text: string; border: string; icon: React.ReactNode } {
+  if (pilar === 'Akademik') return { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200', icon: <GraduationCap className="w-3 h-3" /> };
+  if (pilar === 'Finansial & Wilayah') return { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', icon: <Wallet className="w-3 h-3" /> };
+  if (pilar === 'Kedisiplinan & Keaktifan') return { bg: 'bg-purple-50', text: 'text-purple-700', border: 'border-purple-200', icon: <UserCheck className="w-3 h-3" /> };
+  return { bg: 'bg-gray-50', text: 'text-gray-600', border: 'border-gray-200', icon: null };
+}
+
+function getPrioritasBadge(prioritas: string): string {
+  if (prioritas === 'Kritis') return 'bg-red-100 text-red-700 border-red-200';
+  if (prioritas === 'Penting') return 'bg-amber-100 text-amber-700 border-amber-200';
+  return 'bg-blue-100 text-blue-700 border-blue-200';
+}
+
+function getLevelDampakBadge(level?: string): string {
+  if (level === 'Sangat Dominan') return 'bg-red-100 text-red-700 border-red-200';
+  if (level === 'Signifikan') return 'bg-amber-100 text-amber-700 border-amber-200';
+  return 'bg-gray-100 text-gray-600 border-gray-200';
 }
 
 /* ── Circular gauge SVG ──────────────────────────────────── */
@@ -96,6 +128,7 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
   const [detail, setDetail] = useState<StudentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     const fetchDetail = async () => {
@@ -116,6 +149,38 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
 
     fetchDetail();
   }, [nim]);
+
+  const handleCopyRecommendations = () => {
+    if (!detail?.shap_explanation?.rekomendasi_intervensi?.length) return;
+
+    const mhs = detail.mahasiswa;
+    const lines = [
+      `=== Catatan Intervensi DPA ===`,
+      `Mahasiswa: ${mhs.nama} (${mhs.nim})`,
+      `Program Studi: ${mhs.fakultas_prodi}`,
+      `Skor Risiko DO: ${detail.prediksi.skor_prediksi_model}% (${detail.prediksi.status_risiko})`,
+      ``,
+      `--- Rekomendasi Tindakan ---`,
+    ];
+
+    detail.shap_explanation.rekomendasi_intervensi.forEach((r, i) => {
+      lines.push(`${i + 1}. [${r.prioritas}] ${r.tindakan}`);
+      lines.push(`   Pilar: ${r.pilar} | Otoritas: ${r.otoritas}`);
+      lines.push('');
+    });
+
+    lines.push(`--- Faktor Pemicu Utama ---`);
+    detail.shap_explanation.top_3_faktor.forEach((f, i) => {
+      lines.push(`${i + 1}. ${f.label}: ${f.deskripsi} (Kontribusi: ${f.bobot_persen ?? '-'}%)`);
+    });
+
+    lines.push('', `Digenerate oleh Siprido EIS pada ${new Date().toLocaleString('id-ID')}`);
+
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -236,10 +301,10 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                 </div>
               </div>
 
-              {/* ── SHAP Analysis ───────────────────────────── */}
+              {/* ── SHAP Analysis — Percentage Bars + Pilar Badges ─── */}
               <div>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                  Top 3 Faktor Pemicu Risiko <span className="text-gray-300 font-normal normal-case tracking-normal">(SHAP Analysis)</span>
+                  Top 3 Faktor Pemicu Risiko <span className="text-gray-300 font-normal normal-case tracking-normal">(Kontribusi Relatif)</span>
                 </h4>
                 
                 <div className="space-y-3">
@@ -249,12 +314,12 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                       return <p className="text-sm text-gray-500 italic">Data penjelasan SHAP tidak tersedia.</p>;
                     }
 
-                    const maxAbsValue = Math.max(...topFactors.map(f => Math.abs(f.shap_value)));
-
                     return topFactors.map((factor, idx) => {
                       const isIncreasing = factor.kontribusi?.toLowerCase().includes('meningkatkan') || factor.shap_value > 0;
                       const isDecreasing = factor.kontribusi?.toLowerCase().includes('menurunkan') || factor.shap_value < 0;
-                      const percentage = maxAbsValue === 0 ? 0 : Math.max(5, (Math.abs(factor.shap_value) / maxAbsValue) * 100);
+                      const bobotPersen = factor.bobot_persen ?? 0;
+                      const pilarBadge = getPilarBadge(factor.pilar);
+                      const levelBadge = getLevelDampakBadge(factor.level_dampak);
 
                       return (
                         <div key={idx} className="bg-white border border-gray-100 rounded-xl p-4 shadow-sm flex items-start gap-3">
@@ -264,36 +329,49 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                           </div>
 
                           <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-center mb-1.5">
-                              <div className="flex items-center gap-1.5">
-                                {isIncreasing ? (
-                                  <TrendingUp className="w-3.5 h-3.5 text-red-500" />
-                                ) : isDecreasing ? (
-                                  <TrendingDown className="w-3.5 h-3.5 text-emerald-500" />
-                                ) : (
-                                  <Minus className="w-3.5 h-3.5 text-gray-400" />
-                                )}
-                                <span className="font-semibold text-gray-800 text-sm">{factor.label}</span>
-                              </div>
-                              <span className="text-xs font-medium text-gray-500 bg-gray-50 px-2 py-0.5 rounded">
-                                {typeof factor.raw_value === 'number' ? (Number.isInteger(factor.raw_value) ? factor.raw_value : Number(factor.raw_value.toFixed(2))) : factor.raw_value}
-                              </span>
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                              {isIncreasing ? (
+                                <TrendingUp className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                              ) : isDecreasing ? (
+                                <TrendingDown className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+                              ) : (
+                                <Minus className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                              )}
+                              <span className="font-semibold text-gray-800 text-sm">{factor.label}</span>
+                              {/* Pilar Badge */}
+                              {factor.pilar && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${pilarBadge.bg} ${pilarBadge.text} ${pilarBadge.border}`}>
+                                  {pilarBadge.icon}
+                                  {factor.pilar === 'Kedisiplinan & Keaktifan' ? 'Kedisiplinan' : factor.pilar === 'Finansial & Wilayah' ? 'Finansial' : factor.pilar}
+                                </span>
+                              )}
+                              {/* Level Dampak Badge */}
+                              {factor.level_dampak && (
+                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${levelBadge}`}>
+                                  {factor.level_dampak}
+                                </span>
+                              )}
                             </div>
                             
-                            {/* Bar */}
+                            {/* Percentage Bar */}
                             <div className="flex items-center gap-2">
-                              <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
                                 <div 
                                   className={`h-full rounded-full transition-all duration-1000 ${isIncreasing ? 'bg-red-500' : isDecreasing ? 'bg-emerald-500' : 'bg-gray-400'}`}
-                                  style={{ width: `${percentage}%` }}
+                                  style={{ width: `${Math.max(3, bobotPersen)}%` }}
                                 />
                               </div>
-                              <span className={`text-xs font-bold w-14 text-right tabular-nums ${isIncreasing ? 'text-red-600' : isDecreasing ? 'text-emerald-600' : 'text-gray-500'}`}>
-                                {factor.shap_value > 0 ? '+' : ''}{factor.shap_value.toFixed(3)}
+                              <span className={`text-sm font-bold w-14 text-right tabular-nums ${isIncreasing ? 'text-red-600' : isDecreasing ? 'text-emerald-600' : 'text-gray-500'}`}>
+                                {bobotPersen.toFixed(1)}%
                               </span>
                             </div>
 
-                            <p className="text-xs text-gray-400 mt-1.5">{factor.deskripsi}. <span className={`font-medium ${isIncreasing ? 'text-red-500' : isDecreasing ? 'text-emerald-500' : 'text-gray-500'}`}>{factor.kontribusi}.</span></p>
+                            <p className="text-xs text-gray-400 mt-1.5">
+                              {factor.deskripsi}. <span className={`font-medium ${isIncreasing ? 'text-red-500' : isDecreasing ? 'text-emerald-500' : 'text-gray-500'}`}>{factor.kontribusi}.</span>
+                              {factor.otoritas_pilar && (
+                                <span className="text-gray-300 ml-1">→ {factor.otoritas_pilar}</span>
+                              )}
+                            </p>
                           </div>
                         </div>
                       );
@@ -301,6 +379,67 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                   })()}
                 </div>
               </div>
+
+              {/* ── Rekomendasi Intervensi Kebijakan ─────────── */}
+              {detail.shap_explanation?.rekomendasi_intervensi && detail.shap_explanation.rekomendasi_intervensi.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      Rekomendasi Intervensi Kebijakan
+                    </h4>
+                    <button
+                      onClick={handleCopyRecommendations}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all duration-200 ${
+                        copied
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:text-gray-800'
+                      }`}
+                    >
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          Tersalin!
+                        </>
+                      ) : (
+                        <>
+                          <ClipboardCopy className="w-3.5 h-3.5" />
+                          Salin ke Catatan DPA
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-xl p-4 space-y-3">
+                    {detail.shap_explanation.rekomendasi_intervensi.map((rec, idx) => {
+                      const pilarBadge = getPilarBadge(rec.pilar);
+                      const prioritasClass = getPrioritasBadge(rec.prioritas);
+                      return (
+                        <div key={idx} className="flex items-start gap-3">
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black flex-shrink-0 mt-0.5 ${
+                            rec.prioritas === 'Kritis' ? 'bg-red-100 text-red-600' : rec.prioritas === 'Penting' ? 'bg-amber-100 text-amber-600' : 'bg-blue-100 text-blue-600'
+                          }`}>
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${prioritasClass}`}>
+                                {rec.prioritas}
+                              </span>
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border ${pilarBadge.bg} ${pilarBadge.text} ${pilarBadge.border}`}>
+                                {pilarBadge.icon}
+                                {rec.pilar === 'Kedisiplinan & Keaktifan' ? 'Kedisiplinan' : rec.pilar === 'Finansial & Wilayah' ? 'Finansial' : rec.pilar}
+                              </span>
+                              <span className="text-[10px] text-gray-400">→ {rec.otoritas}</span>
+                            </div>
+                            <p className="text-sm text-gray-700 leading-relaxed">{rec.tindakan}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
         </div>

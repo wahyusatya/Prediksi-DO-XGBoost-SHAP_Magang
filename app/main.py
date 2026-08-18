@@ -93,6 +93,25 @@ WILAYAH_LABELS = {
     3: "Luar Kec. & Kab. Buleleng",
 }
 
+# Mapping fitur → Pilar Eksekutif Universitas
+FEATURE_PILLAR = {
+    "ips_smt1": "Akademik",
+    "ips_smt2": "Akademik",
+    "delta_ips": "Akademik",
+    "mk_cekal_uas_smt2": "Akademik",
+    "golongan_ukt": "Finansial & Wilayah",
+    "kode_wilayah": "Finansial & Wilayah",
+    "persen_kehadiran_smt2": "Kedisiplinan & Keaktifan",
+    "status_cuti": "Kedisiplinan & Keaktifan",
+}
+
+# Mapping pilar → otoritas penanggung jawab
+PILLAR_AUTHORITIES = {
+    "Akademik": "WR I / Dekan / Kaprodi",
+    "Finansial & Wilayah": "WR II / Biro Keuangan / BAAK",
+    "Kedisiplinan & Keaktifan": "WR III / DPA",
+}
+
 # ============================================================
 # Global State (diisi saat startup)
 # ============================================================
@@ -222,6 +241,136 @@ def _compute_shap_values(X: pd.DataFrame):
     base_value = contribs[0, -1]    # kolom terakhir = base value (bias)
 
     return shap_values, base_value
+
+
+def _normalize_shap_to_percent(feature_shap_list: list) -> list:
+    """
+    Normalisasi bobot SHAP menjadi persentase kontribusi relatif (%).
+    Menambahkan field 'bobot_persen' dan 'level_dampak' ke setiap item.
+    """
+    total_abs = sum(f["abs_shap"] for f in feature_shap_list)
+    if total_abs == 0:
+        total_abs = 1.0  # guard against division by zero
+
+    for f in feature_shap_list:
+        pct = (f["abs_shap"] / total_abs) * 100
+        f["bobot_persen"] = round(pct, 1)
+        if pct >= 50:
+            f["level_dampak"] = "Sangat Dominan"
+        elif pct >= 25:
+            f["level_dampak"] = "Signifikan"
+        else:
+            f["level_dampak"] = "Moderat"
+
+        # Tambahkan pilar & otoritas
+        pilar = FEATURE_PILLAR.get(f["feature"], "Lainnya")
+        f["pilar"] = pilar
+        f["otoritas_pilar"] = PILLAR_AUTHORITIES.get(pilar, "-")
+
+    return feature_shap_list
+
+
+def _generate_recommendations(top_factors: list, mhs_data: dict) -> list:
+    """
+    Mesin Rekomendasi Preskriptif berbasis rule-based heuristics.
+    Menganalisis Top 3 faktor pemicu dan menghasilkan rekomendasi
+    tindakan konkret bagi pengambil keputusan universitas.
+    """
+    recommendations = []
+    seen_actions = set()  # de-duplicate
+
+    kehadiran = float(mhs_data.get("persen_kehadiran_smt2", 100.0))
+    mk_cekal = int(mhs_data.get("mk_cekal_uas_smt2", 0))
+    ukt = int(mhs_data.get("golongan_ukt", 1))
+    wilayah = int(mhs_data.get("kode_wilayah", 1))
+    ips1 = float(mhs_data.get("ips_smt1", 0))
+    ips2 = float(mhs_data.get("ips_smt2", 0))
+    delta = ips2 - ips1
+    cuti = int(mhs_data.get("status_cuti", 0))
+
+    top_features = {f["feature"] for f in top_factors}
+
+    # Rule 1: Kehadiran Rendah / MK Cekal
+    if ("persen_kehadiran_smt2" in top_features and kehadiran < 80) or \
+       ("mk_cekal_uas_smt2" in top_features and mk_cekal >= 1):
+        action = (
+            "Lakukan pemanggilan mahasiswa oleh Dosen Pembimbing Akademik (DPA) "
+            "untuk konseling kedisiplinan. Verifikasi kendala absensi kelas "
+            "(masalah transportasi, kesehatan, atau jadwal kerja). "
+            "Koordinasi dengan Kaprodi untuk monitoring kehadiran mingguan."
+        )
+        if action not in seen_actions:
+            seen_actions.add(action)
+            prioritas = "Kritis" if kehadiran < 60 or mk_cekal >= 3 else "Penting"
+            recommendations.append({
+                "pilar": "Kedisiplinan & Keaktifan",
+                "otoritas": PILLAR_AUTHORITIES["Kedisiplinan & Keaktifan"],
+                "tindakan": action,
+                "prioritas": prioritas,
+            })
+
+    # Rule 2: UKT Tinggi & Wilayah Jauh
+    if ("golongan_ukt" in top_features and ukt >= 4) or \
+       ("kode_wilayah" in top_features and wilayah >= 2):
+        action = (
+            "Verifikasi kelayakan bantuan beasiswa atau pengajuan keringanan "
+            "penyesuaian UKT oleh BAAK/WR II. Pertimbangkan program bantuan "
+            "transportasi atau asrama bagi mahasiswa asal luar daerah. "
+            "Evaluasi kondisi sosial-ekonomi keluarga untuk intervensi finansial."
+        )
+        if action not in seen_actions:
+            seen_actions.add(action)
+            prioritas = "Kritis" if ukt >= 6 and wilayah >= 3 else "Penting"
+            recommendations.append({
+                "pilar": "Finansial & Wilayah",
+                "otoritas": PILLAR_AUTHORITIES["Finansial & Wilayah"],
+                "tindakan": action,
+                "prioritas": prioritas,
+            })
+
+    # Rule 3: Penurunan IPS / IPS Rendah
+    if ("delta_ips" in top_features and delta < 0) or \
+       ("ips_smt1" in top_features and ips1 < 2.75) or \
+       ("ips_smt2" in top_features and ips2 < 2.75):
+        action = (
+            "Rekomendasikan program pendampingan tutorial sebaya (peer-tutoring) "
+            "atau remedial terarah di tingkat prodi. Identifikasi mata kuliah "
+            "dengan nilai terburuk untuk intervensi spesifik. "
+            "Libatkan Kaprodi untuk menyusun rencana pemulihan akademik."
+        )
+        if action not in seen_actions:
+            seen_actions.add(action)
+            prioritas = "Kritis" if ips2 < 2.0 or delta < -0.5 else "Penting"
+            recommendations.append({
+                "pilar": "Akademik",
+                "otoritas": PILLAR_AUTHORITIES["Akademik"],
+                "tindakan": action,
+                "prioritas": prioritas,
+            })
+
+    # Rule 4: Cuti Berulang
+    if "status_cuti" in top_features and cuti >= 1:
+        action = (
+            "Agendakan audiensi khusus untuk evaluasi status studi dan "
+            "penyusunan rencana kelulusan. Eksplorasi penyebab cuti "
+            "(finansial, kesehatan, keluarga) untuk intervensi holistik. "
+            "Pertimbangkan perpanjangan masa studi dengan monitoring ketat."
+        )
+        if action not in seen_actions:
+            seen_actions.add(action)
+            prioritas = "Kritis" if cuti >= 2 else "Perlu Perhatian"
+            recommendations.append({
+                "pilar": "Kedisiplinan & Keaktifan",
+                "otoritas": PILLAR_AUTHORITIES["Kedisiplinan & Keaktifan"],
+                "tindakan": action,
+                "prioritas": prioritas,
+            })
+
+    # Sortir berdasarkan prioritas
+    priority_order = {"Kritis": 0, "Penting": 1, "Perlu Perhatian": 2}
+    recommendations.sort(key=lambda r: priority_order.get(r["prioritas"], 99))
+
+    return recommendations
 
 
 def _build_shap_description(feature_name: str, shap_value: float, raw_value: float, asal_daerah: str = "", **kwargs) -> str:
@@ -455,6 +604,9 @@ def get_mahasiswa_detail(nim: str):
     # Sortir berdasarkan kontribusi absolut terbesar
     feature_shap.sort(key=lambda x: x["abs_shap"], reverse=True)
 
+    # Normalisasi ke persentase kontribusi relatif & tambahkan pilar
+    _normalize_shap_to_percent(feature_shap)
+
     # Buat salinan top 3 tanpa field internal
     top_3 = []
     for f in feature_shap[:3]:
@@ -476,6 +628,9 @@ def get_mahasiswa_detail(nim: str):
             else:
                 entry["kontribusi"] = "Netral terhadap risiko DO"
         top_3.append(entry)
+
+    # Generate rekomendasi preskriptif berdasarkan top 3 faktor
+    rekomendasi = _generate_recommendations(top_3, mhs_data)
 
     # Bersihkan abs_shap dari semua faktor
     for f in feature_shap:
@@ -508,6 +663,7 @@ def get_mahasiswa_detail(nim: str):
             "base_value": round(float(base_value), 4),
             "top_3_faktor": top_3,
             "semua_faktor": feature_shap,
+            "rekomendasi_intervensi": rekomendasi,
         },
     }
 
@@ -605,6 +761,156 @@ def retrain_model_endpoint():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Gagal melatih ulang model: {str(e)}")
+
+
+# ============================================================
+# Endpoint: GET /api/v1/analytics/macro-insights
+# ============================================================
+@app.get("/api/v1/analytics/macro-insights")
+def get_macro_insights(
+    fakultas: Optional[str] = Query(None, description="Filter berdasarkan fakultas"),
+    semester: Optional[int] = Query(None, description="Filter berdasarkan semester"),
+):
+    """
+    Agregasi faktor risiko dominan di tingkat makro universitas/fakultas.
+    Menghitung rata-rata kontribusi relatif per pilar dan per fitur
+    berdasarkan seluruh mahasiswa (dengan penekanan pada yang berisiko).
+    """
+    try:
+        conditions = []
+        params = {}
+        if semester is not None:
+            conditions.append("m.smt = :semester")
+            params["semester"] = semester
+        if fakultas:
+            conditions.append("m.fakultas_prodi ILIKE :fakultas")
+            params["fakultas"] = f"%{fakultas}%"
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        query = text(f"""
+            SELECT
+                m.nim, m.nama, m.fakultas_prodi, m.smt,
+                m.ips_smt1, m.ips_smt2, m.golongan_ukt, m.status_cuti,
+                m.kode_wilayah, m.asal_daerah, m.persen_kehadiran_smt2,
+                m.mk_cekal_uas_smt2
+            FROM data_mahasiswa_smt2 m
+            {where_clause}
+            ORDER BY m.nim
+        """)
+
+        with engine.connect() as conn:
+            rows = conn.execute(query, params).mappings().all()
+
+        if not rows:
+            return {
+                "filter": {"fakultas": fakultas, "semester": semester},
+                "total_mahasiswa": 0,
+                "total_berisiko": 0,
+                "distribusi_pilar_pemicu": {},
+                "top_3_faktor_global": [],
+            }
+
+        # Batch predict
+        df_all = pd.DataFrame([dict(r) for r in rows])
+        df_all["ips_smt1"] = df_all["ips_smt1"].astype(float)
+        df_all["ips_smt2"] = df_all["ips_smt2"].astype(float)
+        df_all["delta_ips"] = df_all["ips_smt2"] - df_all["ips_smt1"]
+        df_all["persen_kehadiran_smt2"] = df_all["persen_kehadiran_smt2"].fillna(100.0).astype(float)
+        df_all["mk_cekal_uas_smt2"] = df_all["mk_cekal_uas_smt2"].fillna(0).astype(int)
+
+        X_all = df_all[FEATURE_COLUMNS].astype(float)
+        probas_all = model.predict_proba(X_all)[:, 1]
+
+        # Hitung jumlah berisiko (skor >= 40) untuk info
+        total_berisiko = 0
+        for mhs, proba in zip(df_all.to_dict(orient="records"), probas_all):
+            skor, _ = _calc_do_score(float(proba), mhs)
+            if skor >= 40:
+                total_berisiko += 1
+
+        # Batch SHAP computation untuk SELURUH mahasiswa
+        total_mahasiswa = len(df_all)
+        booster = model.get_booster()
+        dmatrix = xgb.DMatrix(X_all, feature_names=FEATURE_COLUMNS)
+        contribs = booster.predict(dmatrix, pred_contribs=True)
+
+        # Akumulasi rata-rata persentase kontribusi per pilar & per fitur
+        pilar_pct_accum = {"Akademik": 0.0, "Finansial & Wilayah": 0.0, "Kedisiplinan & Keaktifan": 0.0}
+        feature_pct_accum = {feat: 0.0 for feat in FEATURE_COLUMNS}
+
+        for row_idx in range(total_mahasiswa):
+            shap_vals = contribs[row_idx, :-1]
+            raw_row = X_all.iloc[row_idx]
+
+            # Hitung weighted importance per fitur (sama dengan detail endpoint)
+            feature_weights = {}
+            for i, feat in enumerate(FEATURE_COLUMNS):
+                sv = float(shap_vals[i])
+                rv = float(raw_row[feat])
+                w = abs(sv)
+                if feat == "status_cuti" and rv >= 1:
+                    w += 0.60 + (rv - 1) * 0.40
+                elif feat == "golongan_ukt" and rv >= 5:
+                    w += 0.45 * (rv - 4)
+                elif feat == "kode_wilayah" and rv == 3:
+                    w += 0.75
+                elif feat == "kode_wilayah" and rv == 2:
+                    w += 0.35
+                elif feat == "delta_ips" and rv < 0:
+                    w += abs(rv) * 1.5
+                elif feat == "mk_cekal_uas_smt2" and rv >= 2:
+                    w += 0.70 + (rv - 2) * 0.25
+                elif feat == "mk_cekal_uas_smt2" and rv == 1:
+                    w += 0.30
+                elif feat == "persen_kehadiran_smt2" and rv < 75:
+                    w += (75 - rv) / 50 * 1.2
+                feature_weights[feat] = w
+
+            # Normalisasi ke 100% untuk mahasiswa ini
+            total_w = sum(feature_weights.values())
+            if total_w == 0:
+                total_w = 1.0
+
+            # Akumulasi persentase per pilar
+            for feat, w in feature_weights.items():
+                feat_pct = (w / total_w) * 100
+                feature_pct_accum[feat] += feat_pct
+                pilar = FEATURE_PILLAR.get(feat, "Lainnya")
+                if pilar in pilar_pct_accum:
+                    pilar_pct_accum[pilar] += feat_pct
+
+        # Rata-rata persentase per pilar
+        distribusi_pilar = {}
+        for pilar, total_pct in pilar_pct_accum.items():
+            avg_pct = total_pct / total_mahasiswa if total_mahasiswa > 0 else 0
+            distribusi_pilar[pilar] = {
+                "jumlah": round(avg_pct / 100 * total_mahasiswa),
+                "persen": round(avg_pct, 1),
+            }
+
+        # Top 3 faktor global berdasarkan rata-rata kontribusi
+        feature_avg = {feat: (total_pct / total_mahasiswa) for feat, total_pct in feature_pct_accum.items()}
+        sorted_features = sorted(feature_avg.items(), key=lambda x: x[1], reverse=True)[:3]
+        top_3_global = [
+            {
+                "feature": feat,
+                "label": FEATURE_LABELS[feat],
+                "pilar": FEATURE_PILLAR.get(feat, "Lainnya"),
+                "jumlah_terdampak": round(avg_pct / 100 * total_mahasiswa),
+                "persen": round(avg_pct, 1),
+            }
+            for feat, avg_pct in sorted_features
+        ]
+
+        return {
+            "filter": {"fakultas": fakultas, "semester": semester},
+            "total_mahasiswa": total_mahasiswa,
+            "total_berisiko": total_berisiko,
+            "distribusi_pilar_pemicu": distribusi_pilar,
+            "top_3_faktor_global": top_3_global,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan: {str(e)}")
 
 
 # ============================================================

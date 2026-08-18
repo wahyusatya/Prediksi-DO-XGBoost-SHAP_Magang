@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import Header from '@/components/layout/Header';
 import KPICards, { Student } from '@/components/dashboard/KPICards';
+import MacroInsightsCard from '@/components/dashboard/MacroInsightsCard';
 import StudentTable, { extractFakultas } from '@/components/dashboard/StudentTable';
 import StudentDetailModal from '@/components/dashboard/StudentDetailModal';
 import { Loader2, AlertCircle } from 'lucide-react';
@@ -96,6 +97,7 @@ export default function DashboardPage() {
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <KPICards data={filteredData} />
+            <MacroInsightsCard selectedFakultas={selectedFakultas} />
             <StudentTable
               data={filteredData}
               onDetailClick={handleDetailClick}
