@@ -46,29 +46,29 @@ graph TD
 Database PostgreSQL `db_siprido_eis` terdiri dari tiga tabel relasional utama:
 
 ```mermaid
-erdiagram
-    data_mahasiswa_smt2 ||--o| prediksi_do : "1-to-1 / HAS"
-    data_mahasiswa_smt2 ||--o{ intervensi_mahasiswa : "1-to-MANY / HAS"
+erDiagram
+    data_mahasiswa_smt2 ||--o| prediksi_do : "memiliki"
+    data_mahasiswa_smt2 ||--o{ intervensi_mahasiswa : "memiliki"
 
     data_mahasiswa_smt2 {
-        varchar nim PK "Nomor Induk Mahasiswa (10-15 digit)"
+        varchar nim PK "Nomor Induk Mahasiswa"
         varchar nama "Nama Lengkap Mahasiswa"
-        varchar fakultas_prodi "Fakultas / Program Studi (misal: FT/Teknik Informatika)"
-        int smt "Semester aktif (Default: 2)"
-        numeric ips_smt1 "IPS Semester 1 (0.00 - 4.00)"
-        numeric ips_smt2 "IPS Semester 2 (0.00 - 4.00)"
-        int golongan_ukt "Golongan UKT (1 s.d. 7)"
-        int status_cuti "Jumlah Semester Cuti (0, 1, 2)"
-        int kode_wilayah "Kode Wilayah Geografis (1, 2, 3)"
-        varchar asal_daerah "Nama Asal Daerah (misal: Singaraja, Seririt, Denpasar)"
-        numeric persen_kehadiran_smt2 "Rata-rata Kehadiran Smt 2 (0.00% - 100.00%)"
-        int mk_cekal_uas_smt2 "Jumlah MK Cekal UAS (<75% Hadir)"
+        varchar fakultas_prodi "Fakultas dan Program Studi"
+        int smt "Semester aktif"
+        numeric ips_smt1 "IPS Semester 1"
+        numeric ips_smt2 "IPS Semester 2"
+        int golongan_ukt "Golongan UKT 1 hingga 7"
+        int status_cuti "Jumlah Semester Cuti"
+        int kode_wilayah "Kode Wilayah Geografis 1-3"
+        varchar asal_daerah "Nama Asal Daerah"
+        numeric persen_kehadiran_smt2 "Persentase Kehadiran Smt 2"
+        int mk_cekal_uas_smt2 "Jumlah MK Cekal UAS hadir di bawah 75 persen"
     }
 
     prediksi_do {
-        varchar nim PK_FK "FK ke data_mahasiswa_smt2.nim"
-        int skor_prediksi "Skor Probabilitas DO (%) (5 - 98)"
-        varchar status_risiko "Status Risiko (Tinggi, Sedang, Rendah)"
+        varchar nim PK, FK "FK ke data_mahasiswa_smt2.nim"
+        int skor_prediksi "Skor Probabilitas DO 5-98 persen"
+        varchar status_risiko "Status Risiko Tinggi Sedang Rendah"
         timestamp updated_at "Waktu Update Terakhir"
     }
 
@@ -76,9 +76,9 @@ erdiagram
         int id PK "Auto Increment Primary Key"
         varchar nim FK "FK ke data_mahasiswa_smt2.nim"
         timestamp tanggal "Waktu Catatan Dibuat"
-        varchar jenis_tindakan "Jenis Intervensi (misal: Bimbingan DPA, Keringanan UKT)"
-        text catatan "Catatan Hasil Konseling / Tindakan"
-        varchar petugas "Nama Petugas / DPA / Kaprodi"
+        varchar jenis_tindakan "Jenis Tindakan Intervensi"
+        text catatan "Catatan Hasil Konseling"
+        varchar petugas "Nama Petugas DPA"
     }
 ```
 
