@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #f8fafc;
   --foreground: #0f172a;
@@ -9,6 +11,17 @@
   --primary-foreground: #ffffff;
   --accent: #3b82f6;
   --border: #e2e8f0;
+}
+
+.dark {
+  --background: #090d16;
+  --foreground: #f8fafc;
+  --card: #0f172a;
+  --card-foreground: #f8fafc;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --accent: #60a5fa;
+  --border: #1e293b;
 }
 
 @theme inline {
@@ -25,6 +38,7 @@ body {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 /* Custom Executive Scrollbar */
@@ -42,8 +56,16 @@ body {
   border-radius: 9999px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
 }
 
 /* Text Selection */
@@ -51,4 +73,10 @@ body {
   background-color: #dbeafe;
   color: #1e3a8a;
 }
+
+.dark ::selection {
+  background-color: #1e3a8a;
+  color: #dbeafe;
+}
+
 

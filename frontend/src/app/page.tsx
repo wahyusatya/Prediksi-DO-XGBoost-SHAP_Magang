@@ -69,28 +69,28 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50/60 font-sans flex flex-col selection:bg-blue-100 selection:text-blue-900">
+    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 font-sans flex flex-col selection:bg-blue-100 selection:text-blue-900 dark:selection:bg-blue-950 dark:selection:text-blue-200 transition-colors duration-200">
       <Header />
       
       <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 relative flex-1">
         {/* Executive Hero Context Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 pb-6 border-b border-slate-200/80">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 pb-6 border-b border-slate-200/80 dark:border-slate-800">
           <div>
             <div className="flex items-center gap-2 mb-1.5">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                <Shield className="w-3.5 h-3.5 text-blue-600" />
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/70 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 Executive Information System
               </span>
               {lastUpdated && (
-                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline">
                   • Terakhir diperbarui: {lastUpdated} WITA
                 </span>
               )}
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Ringkasan Eksekutif & Intelijen Drop Out
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-600 max-w-3xl leading-relaxed">
+            <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed">
               Monitoring dini probabilitas drop out mahasiswa semester 2 berbasis Explainable AI (XGBoost + SHAP) terintegrasi pada 3 pilar: Akademik, Finansial & Wilayah, serta Kedisiplinan & Keaktifan.
             </p>
           </div>
@@ -100,10 +100,10 @@ export default function DashboardPage() {
             <button
               onClick={() => fetchData(true)}
               disabled={loading || isRefreshing}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl bg-white border border-slate-200/90 text-slate-700 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 transition-all shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600/20"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-700/80 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 disabled:opacity-50 transition-all shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600/20"
               title="Perbarui data terbaru dari backend"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${isRefreshing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
               <span>{isRefreshing ? 'Sinkronisasi...' : 'Segarkan Data'}</span>
             </button>
           </div>
@@ -111,27 +111,27 @@ export default function DashboardPage() {
 
         {/* Dynamic Content View */}
         {loading ? (
-          <div className="bg-white rounded-2xl border border-slate-200/80 p-16 shadow-xs flex flex-col items-center justify-center space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-16 shadow-xs flex flex-col items-center justify-center space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-inner">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
             <div className="text-center">
-              <p className="text-sm font-bold text-slate-800">Menghubungkan ke Server Siprido EIS...</p>
-              <p className="text-xs text-slate-500 mt-1">Mengunduh data inferensi prediksi probabilitas DO dan bobot SHAP</p>
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-100">Menghubungkan ke Server Siprido EIS...</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Mengunduh data inferensi prediksi probabilitas DO dan bobot SHAP</p>
             </div>
           </div>
         ) : error ? (
-          <div className="bg-rose-50/80 border border-rose-200 p-6 sm:p-8 rounded-2xl flex flex-col sm:flex-row items-start gap-4 shadow-xs">
-            <div className="p-3 rounded-xl bg-rose-100 text-rose-700 shrink-0">
+          <div className="bg-rose-50/80 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 p-6 sm:p-8 rounded-2xl flex flex-col sm:flex-row items-start gap-4 shadow-xs">
+            <div className="p-3 rounded-xl bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300 shrink-0">
               <AlertCircle className="w-6 h-6" />
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="text-rose-900 font-bold text-base">Gagal Memuat Data Server</h3>
-              <p className="text-rose-700 text-xs sm:text-sm mt-1 leading-relaxed">{error}</p>
-              <p className="text-rose-600 text-xs mt-2">Pastikan kontainer backend FastAPI berjalan di port 8000 dan database PostgreSQL aktif.</p>
+              <h3 className="text-rose-900 dark:text-rose-200 font-bold text-base">Gagal Memuat Data Server</h3>
+              <p className="text-rose-700 dark:text-rose-300 text-xs sm:text-sm mt-1 leading-relaxed">{error}</p>
+              <p className="text-rose-600 dark:text-rose-400 text-xs mt-2">Pastikan kontainer backend FastAPI berjalan di port 8000 dan database PostgreSQL aktif.</p>
               <button 
                 onClick={() => fetchData(true)}
-                className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
+                className="mt-4 px-4 py-2 bg-rose-600 hover:bg-rose-700 dark:bg-rose-700 dark:hover:bg-rose-600 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
               >
                 Coba Sinkronisasi Ulang
               </button>
@@ -166,17 +166,17 @@ export default function DashboardPage() {
       </main>
 
       {/* Institutional Executive Footer */}
-      <footer className="border-t border-slate-200/80 bg-white py-6 mt-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+      <footer className="border-t border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/90 py-6 mt-12 transition-colors duration-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-slate-900 flex items-center justify-center text-white text-[10px] font-bold">
+            <div className="w-5 h-5 rounded bg-slate-900 dark:bg-blue-600 flex items-center justify-center text-white text-[10px] font-bold">
               S
             </div>
-            <span className="font-semibold text-slate-700">Siprido Executive Information System (EIS)</span>
-            <span className="text-slate-300 hidden md:inline">|</span>
+            <span className="font-semibold text-slate-700 dark:text-slate-200">Siprido Executive Information System (EIS)</span>
+            <span className="text-slate-300 dark:text-slate-700 hidden md:inline">|</span>
             <span className="hidden md:inline">Prescriptive ML & XAI Decision Support</span>
           </div>
-          <p className="text-center sm:text-right text-[11px] text-slate-400">
+          <p className="text-center sm:text-right text-[11px] text-slate-400 dark:text-slate-500">
             Sistem Informasi Eksekutif Universitas • Machine Learning XGBoost & SHAP Explainability Engine
           </p>
         </div>
