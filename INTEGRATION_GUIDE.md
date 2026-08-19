@@ -4,7 +4,7 @@ Dokumen ini ditujukan untuk **Pengembang (Developer) & Tim IT Kampus** yang ingi
 
 ---
 
-## 📐 1. Arsitektur System & Alur Data
+## 1. Arsitektur System & Alur Data
 
 ```
 +------------------+       +-------------------+       +-----------------------+
@@ -21,7 +21,7 @@ Dokumen ini ditujukan untuk **Pengembang (Developer) & Tim IT Kampus** yang ingi
 
 ---
 
-## 🚀 2. Panduan Setup & Deployment Produksi
+## 2. Panduan Setup & Deployment Produksi
 
 ### Opsi A: Deployment Menggunakan Docker Compose (Direkomendasikan)
 
@@ -46,7 +46,7 @@ Dokumen ini ditujukan untuk **Pengembang (Developer) & Tim IT Kampus** yang ingi
 
 ---
 
-## 🔌 3. Panduan Integrasi SIAKAD / IES Eksisting
+## 3. Panduan Integrasi SIAKAD / IES Eksisting
 
 Untuk menghubungkan data dari SIAKAD/IES kampus ke Siprido EIS, developer dapat memilih 2 metode:
 
@@ -96,7 +96,7 @@ Jika universitas menggunakan ETL Pipeline (seperti Apache Airflow, Pentaho, atau
 
 ---
 
-## 📊 4. API Analisis Makro (`GET /api/v1/analytics/macro-insights`)
+## 4. API Analisis Makro (`GET /api/v1/analytics/macro-insights`)
 
 Untuk kebutuhan dashboard IES Rektorat / pimpinan universitas yang memerlukan agregasi makro:
 * **Endpoint**: `GET /api/v1/analytics/macro-insights`
@@ -105,7 +105,7 @@ Untuk kebutuhan dashboard IES Rektorat / pimpinan universitas yang memerlukan ag
 
 ---
 
-## 🤖 5. Panduan MLOps: Pelatihan Ulang Model (Automated Retraining)
+## 5. Panduan MLOps: Pelatihan Ulang Model (Automated Retraining)
 
 Seiring bertambahnya data angkatan lulusan baru, model XGBoost perlu dilatih ulang secara berkala agar makin presisi.
 
@@ -132,7 +132,7 @@ Tim IT/Admin dapat memicu *retraining* kapan saja melalui API:
 
 ---
 
-## 📋 6. API Modul Intervensi & Action Tracker (Untuk DPA & Kaprodi)
+## 6. API Modul Intervensi & Action Tracker (Untuk DPA & Kaprodi)
 
 Siprido menyediakan endpoint untuk mencatat tindakan bimbingan akademik bagi mahasiswa berisiko:
 
@@ -152,7 +152,7 @@ Siprido menyediakan endpoint untuk mencatat tindakan bimbingan akademik bagi mah
 
 ---
 
-## 🔒 7. Rekomendasi Keamanan & Skalabilitas Produksi
+## 7. Rekomendasi Keamanan & Skalabilitas Produksi
 
 1. **Restriksi CORS & Environment**:
    Pastikan variabel `ALLOWED_ORIGINS` di `.env` hanya mengizinkan domain IES/SIAKAD resmi universitas.

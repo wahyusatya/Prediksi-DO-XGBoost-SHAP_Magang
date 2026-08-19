@@ -3,7 +3,7 @@
 
 ---
 
-## 📌 Prasyarat Perangkat (Prerequisites)
+## Prasyarat Perangkat (Prerequisites)
 
 Sebelum melakukan setup pada **perangkat/laptop baru**, pastikan perangkat Anda sudah terinstall:
 
@@ -14,7 +14,7 @@ Sebelum melakukan setup pada **perangkat/laptop baru**, pastikan perangkat Anda 
 
 ---
 
-## 🚀 Panduan Setup & Cara Menjalankan di Perangkat Baru
+## Panduan Setup & Cara Menjalankan di Perangkat Baru
 
 ### Langkah 1: Kloning Repositori & Persiapan Environment
 
@@ -101,7 +101,7 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
 
 ---
 
-## 🛠️ Perintah Operasional Penting
+## Perintah Operasional Penting
 
 ### 1. Melatih Ulang Model Machine Learning (Retraining)
 Jika ada pembaruan algoritma atau data baru di database, pemicu retraining dapat dipanggil melalui API tanpa perlu restart server:
@@ -132,14 +132,14 @@ docker compose restart api_siprido
 
 ---
 
-## 📚 Dokumen Pendukung Lengkap
+## Dokumen Pendukung Lengkap
 
-- 📖 [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost, 3 Pilar Kebijakan, Rekomendasi Preskriptif, & API Endpoints.
-- 🔌 [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md): Panduan Integrasi Developer dengan SIAKAD/IES, Macro Insights, Webhook Retraining, MLOps, & Production Deployment.
+- [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost, 3 Pilar Kebijakan, Rekomendasi Preskriptif, & API Endpoints.
+- [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md): Panduan Integrasi Developer dengan SIAKAD/IES, Macro Insights, Webhook Retraining, MLOps, & Production Deployment.
 
 ---
 
-## 📂 Struktur Proyek
+## Struktur Proyek
 
 ```
 Prediksi DO/

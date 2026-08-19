@@ -11,12 +11,12 @@ Siprido EIS dibangun menggunakan arsitektur modern terpisah (*decoupled frontend
 
 ```mermaid
 graph TD
-    User["👨‍💼 Pimpinan / Rektor / Dekan / DPA (Browser)"]
-    FE["🎨 Frontend UI (Next.js 16 + Tailwind CSS v4)<br/>Port: 3000"]
-    BE["⚡ Backend REST API (FastAPI + Python 3.10)<br/>Port: 8000"]
-    DB[("🐘 Database (PostgreSQL 15)<br/>Port: 5433 / Container: 5432")]
-    ML["🤖 ML Engine (XGBoost + SHAP)<br/>model_xgboost.joblib"]
-    SIAKAD["🏛️ SIAKAD / IES Kampus (Sistem Eksternal)"]
+    User["Pimpinan / Rektor / Dekan / DPA (Browser)"]
+    FE["Frontend UI (Next.js 16 + Tailwind CSS v4)<br/>Port: 3000"]
+    BE["Backend REST API (FastAPI + Python 3.10)<br/>Port: 8000"]
+    DB[("Database (PostgreSQL 15)<br/>Port: 5433 / Container: 5432")]
+    ML["ML Engine (XGBoost + SHAP)<br/>model_xgboost.joblib"]
+    SIAKAD["SIAKAD / IES Kampus (Sistem Eksternal)"]
 
     User -->|HTTP / Network IP| FE
     FE -->|REST API / Dynamic Resolver| BE
@@ -351,12 +351,12 @@ Mencatat dan mengambil riwayat tindakan bimbingan akademik / keringanan UKT untu
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Exec as 👨‍💼 Eksekutif / Dekan / DPA
-    participant FE as 🎨 Next.js Frontend
-    participant API as ⚡ FastAPI Backend
-    participant DB as 🐘 PostgreSQL DB
-    participant ML as 🤖 XGBoost Model
-    participant SIAKAD as 🏛️ SIAKAD Kampus
+    actor Exec as Eksekutif / Dekan / DPA
+    participant FE as Next.js Frontend
+    participant API as FastAPI Backend
+    participant DB as PostgreSQL DB
+    participant ML as XGBoost Model
+    participant SIAKAD as SIAKAD Kampus
 
     SIAKAD->>API: POST /api/v1/mahasiswa/bulk-sync (Batch Import Data 8 Fitur)
     API->>DB: UPSERT data_mahasiswa_smt2 & prediksi_do
