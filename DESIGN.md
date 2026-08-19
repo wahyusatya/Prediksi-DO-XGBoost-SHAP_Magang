@@ -142,6 +142,10 @@ Surfaces rely on tonal layering and crisp borders (`border-slate-200/80` / `dark
 - **Primary Executive:** Solid Slate 900 (light) / Slate 800 with border (dark) with white text.
 - **Action / Detail:** Card button with blue text, fine border, and subtle hover tint.
 
+### Executive Combobox & Filters
+- **Faculty Intelligence Combobox:** Custom floating popover menu with building icons, faculty abbreviation badges, real-time student counts, embedded high-risk alerts (`X Berisiko`), search filtering, and 1-click reset trigger.
+- **Accessibility & Dismissal:** Full support for `Escape` key, click-outside dismissal, and ARIA `listbox` attributes.
+
 ### Risk Gauge & Badges
 - **Circular Risk Gauge:** Animated SVG circle with color-coded stroke arc, dark-aware track, and centered bold percentage.
 - **Risk Badges:** Fully rounded pills with color-matched indicator dots.

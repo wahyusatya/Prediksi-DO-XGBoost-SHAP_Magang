@@ -1,16 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Student, getRiskBadge } from './KPICards';
 import { 
   ChevronRight, 
   ChevronLeft, 
+  ChevronDown,
+  Check,
   Search, 
   Filter, 
   SlidersHorizontal,
-  X,
-  User,
-  GraduationCap,
-  Sparkles,
-  Layers
+  X, 
+  User, 
+  GraduationCap, 
+  Sparkles, 
+  Layers,
+  Building2,
+  AlertOctagon
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
@@ -38,6 +42,47 @@ export default function StudentTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRiskTab, setSelectedRiskTab] = useState<'semua' | 'tinggi' | 'sedang' | 'rendah'>('semua');
   const [currentPage, setCurrentPage] = useState(1);
+  const [isFakultasOpen, setIsFakultasOpen] = useState(false);
+  const [fakultasSearch, setFakultasSearch] = useState('');
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside & Escape key
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsFakultasOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsFakultasOpen(false);
+      }
+    };
+    if (isFakultasOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFakultasOpen]);
+
+  // Statistics per faculty for intelligence badges
+  const facultyStats = useMemo(() => {
+    const stats: Record<string, { total: number; highRisk: number }> = {};
+    data.forEach((s) => {
+      const fak = extractFakultas(s.fakultas_prodi);
+      if (fak) {
+        if (!stats[fak]) stats[fak] = { total: 0, highRisk: 0 };
+        stats[fak].total += 1;
+        if (s.status_risiko?.toLowerCase() === 'tinggi') {
+          stats[fak].highRisk += 1;
+        }
+      }
+    });
+    return stats;
+  }, [data]);
 
   // Counts for triage tabs
   const tabCounts = useMemo(() => {
@@ -73,6 +118,14 @@ export default function StudentTable({
     });
   }, [data, searchQuery, selectedFakultas, selectedRiskTab]);
 
+  // Filtered faculties in dropdown search
+  const visibleFakultasOptions = useMemo(() => {
+    if (!fakultasSearch.trim()) return fakultasOptions;
+    return fakultasOptions.filter((f) => 
+      f.toLowerCase().includes(fakultasSearch.toLowerCase().trim())
+    );
+  }, [fakultasOptions, fakultasSearch]);
+
   // Reset to page 1 when filters change
   const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
@@ -90,6 +143,7 @@ export default function StudentTable({
   const handleFakultasChange = (value: string) => {
     onFakultasChange?.(value);
     setCurrentPage(1);
+    setIsFakultasOpen(false);
   };
 
   const handleRiskTabChange = (tab: 'semua' | 'tinggi' | 'sedang' | 'rendah') => {
@@ -105,9 +159,9 @@ export default function StudentTable({
   };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-slate-200/80 dark:border-slate-800 overflow-hidden transition-colors duration-200">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-slate-200/80 dark:border-slate-800 overflow-visible transition-colors duration-200">
       {/* Table Header & Quick Triage Section */}
-      <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/70 to-white dark:from-slate-800/40 dark:to-slate-900">
+      <div className="p-6 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-b from-slate-50/70 to-white dark:from-slate-800/40 dark:to-slate-900 rounded-t-2xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -121,27 +175,174 @@ export default function StudentTable({
             </p>
           </div>
 
-          {/* Search & Faculty Filter Controls */}
+          {/* Search & Custom Executive Faculty Filter Controls */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
-            {/* Faculty Selector */}
+            {/* Custom Executive Faculty Selector */}
             {fakultasOptions.length > 0 && (
-              <div className="relative min-w-[200px]">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
-                  <Filter className="h-4 w-4" />
-                </div>
-                <select
-                  value={selectedFakultas}
-                  onChange={(e) => handleFakultasChange(e.target.value)}
-                  className="pl-9 pr-8 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 w-full appearance-none cursor-pointer shadow-xs transition-colors"
+              <div className="relative" ref={dropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setIsFakultasOpen(!isFakultasOpen)}
+                  className={`inline-flex items-center justify-between gap-2.5 px-3.5 py-2 border rounded-xl text-xs font-semibold transition-all duration-150 w-full sm:w-auto sm:min-w-[230px] shadow-2xs focus:outline-none focus:ring-2 focus:ring-blue-600/30 ${
+                    isFakultasOpen
+                      ? 'bg-blue-50/80 dark:bg-slate-800 border-blue-400 dark:border-blue-600 text-blue-900 dark:text-blue-200 ring-2 ring-blue-600/20'
+                      : selectedFakultas
+                        ? 'bg-blue-50/60 dark:bg-blue-950/50 border-blue-300 dark:border-blue-800 text-blue-900 dark:text-blue-300 hover:bg-blue-100/60 dark:hover:bg-blue-900/40 hover:border-blue-400 dark:hover:border-blue-700'
+                        : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                  aria-haspopup="listbox"
+                  aria-expanded={isFakultasOpen}
                 >
-                  <option value="">Semua Fakultas</option>
-                  {fakultasOptions.map((fak) => (
-                    <option key={fak} value={fak}>{fak}</option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
-                  <ChevronRight className="h-3.5 w-3.5 rotate-90" />
-                </div>
+                  <div className="flex items-center gap-2 truncate">
+                    <div className="p-1 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-300 shrink-0">
+                      <Building2 className="w-3.5 h-3.5" />
+                    </div>
+                    <span className="truncate">
+                      {selectedFakultas || 'Semua Fakultas'}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                    {selectedFakultas ? (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleFakultasChange('');
+                        }}
+                        title="Reset filter fakultas"
+                        className="p-0.5 rounded-full hover:bg-blue-200/80 dark:hover:bg-blue-900 text-blue-700 dark:text-blue-300 transition-colors"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+                        {data.length}
+                      </span>
+                    )}
+                    <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${isFakultasOpen ? 'rotate-180 text-blue-600 dark:text-blue-400' : ''}`} />
+                  </div>
+                </button>
+
+                {/* Dropdown Menu Overlay */}
+                {isFakultasOpen && (
+                  <div className="absolute top-full right-0 sm:left-0 mt-2 z-50 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 p-2 animate-in fade-in zoom-in-95 duration-150 origin-top">
+                    {/* Header inside popup */}
+                    <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                          <Building2 className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                          Pilih Unit Akademik / Fakultas
+                        </p>
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">Filter data tabel dan analisis makro</p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                        {fakultasOptions.length} Fakultas
+                      </span>
+                    </div>
+
+                    {/* Quick search if faculties > 3 */}
+                    {fakultasOptions.length > 3 && (
+                      <div className="p-2 border-b border-slate-100 dark:border-slate-800">
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder="Cari nama fakultas..."
+                            value={fakultasSearch}
+                            onChange={(e) => setFakultasSearch(e.target.value)}
+                            className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-600"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Menu Options List */}
+                    <div className="max-h-64 overflow-y-auto py-1 space-y-1">
+                      {/* Option 1: Semua Fakultas (All) */}
+                      <button
+                        type="button"
+                        onClick={() => handleFakultasChange('')}
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
+                          !selectedFakultas
+                            ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 font-bold'
+                            : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 ${
+                            !selectedFakultas
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                          }`}>
+                            <Layers className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs truncate font-bold">Seluruh Universitas</p>
+                            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">Semua Fakultas ({data.length} Mahasiswa)</p>
+                          </div>
+                        </div>
+
+                        {!selectedFakultas && (
+                          <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                            <Check className="w-3 h-3 stroke-[3]" />
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Individual Faculties */}
+                      {visibleFakultasOptions.map((fak) => {
+                        const isSelected = selectedFakultas === fak;
+                        const stat = facultyStats[fak] || { total: 0, highRisk: 0 };
+                        const initials = fak.split(/\s+/).map((w: string) => w[0]).join('').substring(0, 3).toUpperCase();
+
+                        return (
+                          <button
+                            key={fak}
+                            type="button"
+                            onClick={() => handleFakultasChange(fak)}
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${
+                              isSelected
+                                ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-900 dark:text-blue-200 font-bold'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/80 text-slate-700 dark:text-slate-200'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200/60 dark:border-slate-700/60'
+                              }`}>
+                                {initials}
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs truncate font-bold">{fak}</p>
+                                <div className="flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
+                                    {stat.total} Mahasiswa
+                                  </span>
+                                  {stat.highRisk > 0 && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60 flex items-center gap-0.5">
+                                      <AlertOctagon className="w-2.5 h-2.5 text-rose-600 dark:text-rose-400" />
+                                      {stat.highRisk} Berisiko
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            {isSelected && (
+                              <div className="w-5 h-5 rounded-full bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                                <Check className="w-3 h-3 stroke-[3]" />
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
