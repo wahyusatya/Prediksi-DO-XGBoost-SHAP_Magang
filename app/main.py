@@ -511,85 +511,92 @@ def get_mahasiswa_detail(nim: str):
     Mengeksekusi XGBoost built-in SHAP (pred_contribs) untuk
     mahasiswa tertentu dan mengembalikan Top 3 faktor pemicu utama risiko DO.
     """
-    with engine.connect() as conn:
-        row = conn.execute(QUERY_MHS_DETAIL, {"nim": nim}).mappings().first()
+    try:
+        with engine.connect() as conn:
+            row = conn.execute(QUERY_MHS_DETAIL, {"nim": nim}).mappings().first()
 
-    if not row:
-        raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Mahasiswa dengan NIM {nim} tidak ditemukan.")
 
-    mhs_data = dict(row)
-    mhs_data["delta_ips"] = float(mhs_data["ips_smt2"]) - float(mhs_data["ips_smt1"])
-    mhs_data["persen_kehadiran_smt2"] = float(mhs_data.get("persen_kehadiran_smt2") or 100.0)
-    mhs_data["mk_cekal_uas_smt2"] = int(mhs_data.get("mk_cekal_uas_smt2") or 0)
-    X = pd.DataFrame([{col: float(mhs_data[col]) for col in FEATURE_COLUMNS}])
+        mhs_data = dict(row)
+        mhs_data["delta_ips"] = float(mhs_data["ips_smt2"]) - float(mhs_data["ips_smt1"])
+        mhs_data["persen_kehadiran_smt2"] = float(mhs_data.get("persen_kehadiran_smt2") or 100.0)
+        mhs_data["mk_cekal_uas_smt2"] = int(mhs_data.get("mk_cekal_uas_smt2") or 0)
+        X = pd.DataFrame([{col: float(mhs_data[col]) for col in FEATURE_COLUMNS}])
 
-    proba_raw = float(model.predict_proba(X)[0][1])
-    skor_do, status_risiko = _calc_do_score(proba_raw, mhs_data)
-    shap_values, base_value = _compute_shap_values(X)
+        proba_raw = float(model.predict_proba(X)[0][1])
+        skor_do, status_risiko = _calc_do_score(proba_raw, mhs_data)
+        shap_values, base_value = _compute_shap_values(X)
 
-    feature_items = []
-    for i, feat in enumerate(FEATURE_COLUMNS):
-        sv = float(shap_values[i])
-        rv = float(X.iloc[0][feat])
-        rv_rounded = round(rv, 2)
-        w = _calc_feature_weight(feat, sv, rv)
-        pilar = FEATURE_PILLAR.get(feat, "Lainnya")
-        feature_items.append((w, {
-            "feature": feat,
-            "label": FEATURE_LABELS[feat],
-            "shap_value": round(sv, 4),
-            "raw_value": rv_rounded,
-            "deskripsi": _build_shap_description(feat, sv, rv_rounded, asal_daerah=mhs_data.get("asal_daerah", ""), total_smt=mhs_data.get("smt", 2)),
-            "pilar": pilar,
-            "otoritas_pilar": PILLAR_AUTHORITIES.get(pilar, "-"),
-        }))
+        feature_items = []
+        for i, feat in enumerate(FEATURE_COLUMNS):
+            sv = float(shap_values[i])
+            rv = float(X.iloc[0][feat])
+            rv_rounded = round(rv, 2)
+            w = _calc_feature_weight(feat, sv, rv)
+            pilar = FEATURE_PILLAR.get(feat, "Lainnya")
+            feature_items.append((w, {
+                "feature": feat,
+                "label": FEATURE_LABELS[feat],
+                "shap_value": round(sv, 4),
+                "raw_value": rv_rounded,
+                "deskripsi": _build_shap_description(feat, sv, rv_rounded, asal_daerah=mhs_data.get("asal_daerah", ""), total_smt=mhs_data.get("smt", 2)),
+                "pilar": pilar,
+                "otoritas_pilar": PILLAR_AUTHORITIES.get(pilar, "-"),
+            }))
 
-    feature_items.sort(key=lambda item: item[0], reverse=True)
-    total_abs = sum(w for w, _ in feature_items) or 1.0
+        feature_items.sort(key=lambda item: item[0], reverse=True)
+        total_abs = sum(w for w, _ in feature_items) or 1.0
 
-    feature_shap = []
-    for w, f in feature_items:
-        pct = (w / total_abs) * 100
-        f["bobot_persen"] = round(pct, 1)
-        f["level_dampak"] = "Sangat Dominan" if pct >= 50 else ("Signifikan" if pct >= 25 else "Moderat")
-        feature_shap.append(f)
+        feature_shap = []
+        for w, f in feature_items:
+            pct = (w / total_abs) * 100
+            f["bobot_persen"] = round(pct, 1)
+            f["level_dampak"] = "Sangat Dominan" if pct >= 50 else ("Signifikan" if pct >= 25 else "Moderat")
+            feature_shap.append(f)
 
-    top_3 = [
-        f | {"kontribusi": _get_kontribusi(f["feature"], f["shap_value"], f["raw_value"])}
-        for f in feature_shap[:3]
-    ]
+        top_3 = [
+            f | {"kontribusi": _get_kontribusi(f["feature"], f["shap_value"], f["raw_value"])}
+            for f in feature_shap[:3]
+        ]
 
-    rekomendasi = _generate_recommendations(top_3, mhs_data)
+        rekomendasi = _generate_recommendations(top_3, mhs_data)
 
-    return {
-        "mahasiswa": {
-            "nim": mhs_data["nim"],
-            "nama": mhs_data["nama"],
-            "fakultas_prodi": mhs_data["fakultas_prodi"],
-            "semester": mhs_data["smt"],
-            "ips_smt1": mhs_data["ips_smt1"],
-            "ips_smt2": mhs_data["ips_smt2"],
-            "ipk": round((mhs_data["ips_smt1"] + mhs_data["ips_smt2"]) / 2.0, 2),
-            "delta_ips": round(mhs_data["delta_ips"], 2),
-            "golongan_ukt": mhs_data["golongan_ukt"],
-            "status_cuti": mhs_data["status_cuti"],
-            "kode_wilayah": mhs_data["kode_wilayah"],
-            "asal_daerah": mhs_data.get("asal_daerah", "-"),
-            "wilayah": WILAYAH_LABELS.get(mhs_data["kode_wilayah"], "-"),
-            "persen_kehadiran_smt2": mhs_data.get("persen_kehadiran_smt2", 100.0),
-            "mk_cekal_uas_smt2": mhs_data.get("mk_cekal_uas_smt2", 0),
-        },
-        "prediksi": {
-            "skor_prediksi_model": skor_do,
-            "status_risiko": status_risiko,
-        },
-        "shap_explanation": {
-            "base_value": round(float(base_value), 4),
-            "top_3_faktor": top_3,
-            "semua_faktor": feature_shap,
-            "rekomendasi_intervensi": rekomendasi,
-        },
-    }
+        return {
+            "mahasiswa": {
+                "nim": mhs_data["nim"],
+                "nama": mhs_data["nama"],
+                "fakultas_prodi": mhs_data["fakultas_prodi"],
+                "semester": mhs_data["smt"],
+                "ips_smt1": float(mhs_data["ips_smt1"]),
+                "ips_smt2": float(mhs_data["ips_smt2"]),
+                "ipk": round((float(mhs_data["ips_smt1"]) + float(mhs_data["ips_smt2"])) / 2.0, 2),
+                "delta_ips": round(float(mhs_data["delta_ips"]), 2),
+                "golongan_ukt": int(mhs_data["golongan_ukt"]),
+                "status_cuti": int(mhs_data["status_cuti"]),
+                "kode_wilayah": int(mhs_data["kode_wilayah"]),
+                "asal_daerah": mhs_data.get("asal_daerah", "-"),
+                "wilayah": WILAYAH_LABELS.get(int(mhs_data["kode_wilayah"]), "-"),
+                "persen_kehadiran_smt2": float(mhs_data.get("persen_kehadiran_smt2") or 100.0),
+                "mk_cekal_uas_smt2": int(mhs_data.get("mk_cekal_uas_smt2") or 0),
+            },
+            "prediksi": {
+                "skor_prediksi_model": skor_do,
+                "status_risiko": status_risiko,
+            },
+            "shap_explanation": {
+                "base_value": round(float(base_value), 4),
+                "top_3_faktor": top_3,
+                "semua_faktor": feature_shap,
+                "rekomendasi_intervensi": rekomendasi,
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Terjadi kesalahan internal server: {str(e)}")
 
 
 # ============================================================
