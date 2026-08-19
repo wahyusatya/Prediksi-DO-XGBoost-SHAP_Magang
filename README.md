@@ -1,5 +1,5 @@
 # Siprido EIS — Sistem Informasi Eksekutif Prediksi Drop Out Mahasiswa
-> **Executive Information System (EIS)** berbasis Machine Learning (XGBoost + SHAP) dan FastAPI + Next.js untuk memprediksi risiko Drop Out (DO) mahasiswa semester 2 serta memberikan analisis faktor pemicu utama.
+> **Executive Information System (EIS)** berbasis Machine Learning (XGBoost + SHAP) dan FastAPI + Next.js 16 untuk memprediksi risiko Drop Out (DO) mahasiswa semester 2, menyajikan analisis pola makro institusi, serta memberikan analisis faktor pemicu SHAP dan rekomendasi preskriptif kebijakan.
 
 ---
 
@@ -41,12 +41,13 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
    ```bash
    docker compose up -d --build
    ```
-3. Jalankan script migrasi database (hanya sekali saat setup perangkat baru):
+3. Jalankan script migrasi database (jika memperbarui database yang sudah ada):
    ```bash
+   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_asal_daerah.sql
    docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_kehadiran.sql
    docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_intervensi.sql
    ```
-4. **Verifikasi Backend**: Buka browser ke **`http://localhost:8000/docs`** untuk melihat Swagger API Interactive Documentation.
+4. **Verifikasi Backend**: Buka browser ke **`http://localhost:8000/docs`** untuk melihat Swagger / OpenAPI Interactive Documentation.
 
 ---
 
@@ -57,6 +58,7 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
 2. Impor struktur tabel & data initial ke PostgreSQL:
    ```bash
    psql -U root -d db_siprido_eis -f init_db.sql
+   psql -U root -d db_siprido_eis -f migrate_asal_daerah.sql
    psql -U root -d db_siprido_eis -f migrate_kehadiran.sql
    psql -U root -d db_siprido_eis -f migrate_intervensi.sql
    ```
@@ -112,8 +114,17 @@ Sistem menyediakan REST API integrasi massal bagi SIAKAD:
 ```bash
 # Endpoint: POST http://localhost:8000/api/v1/mahasiswa/bulk-sync
 ```
+Atau jalankan skrip simulasi bulk sync 120 mahasiswa:
+```bash
+python test_bulk_sync_scenario.py
+```
 
-### 3. Restart Container Backend (Docker)
+### 3. Mengakses Analisis Pola Makro
+```bash
+# Endpoint: GET http://localhost:8000/api/v1/analytics/macro-insights
+```
+
+### 4. Restart Container Backend (Docker)
 Jika Anda mengubah kode Python di direktori `app/`:
 ```bash
 docker compose restart api_siprido
@@ -123,8 +134,8 @@ docker compose restart api_siprido
 
 ## 📚 Dokumen Pendukung Lengkap
 
-- 📖 [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost, SHAP, & API Endpoints.
-- 🔌 [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md): Panduan Integrasi Developer dengan SIAKAD/IES, Webhook Retraining, MLOps, & Production Deployment.
+- 📖 [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost, 3 Pilar Kebijakan, Rekomendasi Preskriptif, & API Endpoints.
+- 🔌 [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md): Panduan Integrasi Developer dengan SIAKAD/IES, Macro Insights, Webhook Retraining, MLOps, & Production Deployment.
 
 ---
 
@@ -132,21 +143,24 @@ docker compose restart api_siprido
 
 ```
 Prediksi DO/
-├── app/                        # Backend REST API Server (FastAPI + XGBoost)
-│   ├── database.py             # SQLAlchemy Connection Engine
-│   ├── main.py                 # REST API Endpoints, Dynamic Scoring, SHAP, & SIAKAD Sync
-│   ├── train_model.py          # Script & Modul Retraining Model XGBoost
-│   ├── model_xgboost.joblib    # Trained Binary Model File
-│   └── requirements.txt        # Dependensi Python Backend
-├── frontend/                   # Frontend Web App (Next.js 15 + Tailwind CSS)
-│   ├── src/app/page.tsx        # Dashboard Eksekutif Utama
-│   ├── src/components/         # Komponen UI (KPICards, StudentTable, StudentDetailModal)
-│   └── package.json            # Dependensi React & Next.js
-├── .env.example                # Template Konfigurasi Environment Produksi
-├── docker-compose.yml          # Konfigurasi Production Docker Container
-├── Dockerfile                  # Container Config untuk FastAPI Backend
-├── init_db.sql                 # Script Inisialisasi Database awal
-├── migrate_intervensi.sql      # Migrasi Tabel Intervensi DPA
-├── INTEGRATION_GUIDE.md        # Panduan Integrasi SIAKAD & Enterprise Setup
-└── DOCUMENTATION.md            # Dokumentasi Teknis Komprehensif
+├── app/                              # Backend REST API Server (FastAPI + XGBoost)
+│   ├── database.py                   # SQLAlchemy Connection Engine
+│   ├── main.py                       # REST API Endpoints, Dynamic Scoring, SHAP, & SIAKAD Sync
+│   ├── train_model.py                # Script & Modul Retraining Model XGBoost
+│   ├── model_xgboost.joblib          # Trained Binary Model File
+│   └── requirements.txt              # Dependensi Python Backend
+├── frontend/                         # Frontend Web App (Next.js 16 + Tailwind CSS v4)
+│   ├── src/app/page.tsx              # Dashboard Eksekutif Utama
+│   ├── src/components/               # Komponen UI (KPICards, MacroInsightsCard, StudentTable, StudentDetailModal)
+│   └── package.json                  # Dependensi React 19 & Next.js 16
+├── .env.example                      # Template Konfigurasi Environment Produksi
+├── docker-compose.yml                # Konfigurasi Production Docker Container
+├── Dockerfile                        # Container Config untuk FastAPI Backend
+├── init_db.sql                       # Script Inisialisasi Database awal
+├── migrate_asal_daerah.sql           # SQL Migration Kolom Asal Daerah
+├── migrate_kehadiran.sql             # SQL Migration Kolom Kehadiran & MK Cekal
+├── migrate_intervensi.sql            # Migrasi Tabel Intervensi DPA
+├── test_bulk_sync_scenario.py        # Skrip Simulasi Bulk Sync 120 Mahasiswa
+├── INTEGRATION_GUIDE.md              # Panduan Integrasi SIAKAD & Enterprise Setup
+└── DOCUMENTATION.md                  # Dokumentasi Teknis Komprehensif
 ```

@@ -33,14 +33,16 @@ Dokumen ini ditujukan untuk **Pengembang (Developer) & Tim IT Kampus** yang ingi
    ```bash
    docker compose up -d --build
    ```
-3. **Eksekusi Migrasi Tabel Intervensi & Kehadiran**:
+3. **Eksekusi Migrasi Database (Jika Meng-update Database Existing)**:
    ```bash
+   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_asal_daerah.sql
    docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_kehadiran.sql
    docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_intervensi.sql
    ```
 4. **Verifikasi Server & OpenAPI Docs**:
    - API Docs: `http://localhost:8000/docs`
    - Healthcheck: `http://localhost:8000/api/v1/mahasiswa`
+   - Macro Insights: `http://localhost:8000/api/v1/analytics/macro-insights`
 
 ---
 
@@ -50,7 +52,7 @@ Untuk menghubungkan data dari SIAKAD/IES kampus ke Siprido EIS, developer dapat 
 
 ### Metode 1: Push Data Massal via REST API (`POST /api/v1/mahasiswa/bulk-sync`)
 
-SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap pergantian periode/bulan:
+SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap pergantian periode/bulan dengan **8 fitur lengkap**:
 
 * **Endpoint**: `POST /api/v1/mahasiswa/bulk-sync`
 * **Content-Type**: `application/json`
@@ -78,6 +80,12 @@ SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap p
 * **Respon (200 OK)**:
   Siprido akan langsung menyimpan data ke DB, menghitung skor prediksi DO real-time secara dinamis, dan meng-upsert hasilnya ke tabel `prediksi_do`.
 
+* **Testing Integrasi Otomatis**:
+  Tersedia skrip simulasi pengiriman batch 120 mahasiswa di root direktori:
+  ```bash
+  python test_bulk_sync_scenario.py
+  ```
+
 ---
 
 ### Metode 2: Direct Database View / ETL Sync (PostgreSQL to PostgreSQL)
@@ -88,7 +96,16 @@ Jika universitas menggunakan ETL Pipeline (seperti Apache Airflow, Pentaho, atau
 
 ---
 
-## 🤖 4. Panduan MLOps: Pelatihan Ulang Model (Automated Retraining)
+## 📊 4. API Analisis Makro (`GET /api/v1/analytics/macro-insights`)
+
+Untuk kebutuhan dashboard IES Rektorat / pimpinan universitas yang memerlukan agregasi makro:
+* **Endpoint**: `GET /api/v1/analytics/macro-insights`
+* **Query Params (Opsional)**: `fakultas`, `semester`
+* **Respon**: Mengembalikan distribusi persentase pilar pemicu (*Akademik*, *Finansial & Wilayah*, *Kedisiplinan & Keaktifan*) serta Top 3 faktor risiko global universitas/fakultas.
+
+---
+
+## 🤖 5. Panduan MLOps: Pelatihan Ulang Model (Automated Retraining)
 
 Seiring bertambahnya data angkatan lulusan baru, model XGBoost perlu dilatih ulang secara berkala agar makin presisi.
 
@@ -115,7 +132,7 @@ Tim IT/Admin dapat memicu *retraining* kapan saja melalui API:
 
 ---
 
-## 📋 5. API Modul Intervensi & Action Tracker (Untuk DPA & Kaprodi)
+## 📋 6. API Modul Intervensi & Action Tracker (Untuk DPA & Kaprodi)
 
 Siprido menyediakan endpoint untuk mencatat tindakan bimbingan akademik bagi mahasiswa berisiko:
 
@@ -135,11 +152,11 @@ Siprido menyediakan endpoint untuk mencatat tindakan bimbingan akademik bagi mah
 
 ---
 
-## 🔒 6. Rekomendasi Keamanan & Skalabilitas Produksi
+## 🔒 7. Rekomendasi Keamanan & Skalabilitas Produksi
 
 1. **Restriksi CORS & Environment**:
    Pastikan variabel `ALLOWED_ORIGINS` di `.env` hanya mengizinkan domain IES/SIAKAD resmi universitas.
 2. **Reverse Proxy (Nginx / Traefik)**:
    Gunakan Nginx di depan FastAPI untuk menangani SSL/TLS (HTTPS) dan *rate limiting*.
 3. **Database Indexing**:
-   Tabel `data_mahasiswa_smt2`, `prediksi_do`, dan `intervensi_mahasiswa` telah dilengkapi indeks pada kolom `nim` dan `status_risiko` untuk performa query cepat pada data hingga 100.000+ mahasiswa.
+   Tabel `data_mahasiswa_smt2`, `prediksi_do`, dan `intervensi_mahasiswa` telah dilengkapi indeks pada kolom `nim`, `fakultas_prodi`, dan `status_risiko` untuk performa query cepat pada data hingga 100.000+ mahasiswa.
