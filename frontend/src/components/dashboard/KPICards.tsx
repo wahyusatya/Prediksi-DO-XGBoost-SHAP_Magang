@@ -3,9 +3,17 @@ import { ShieldCheck, AlertTriangle, AlertOctagon, Users, Activity } from 'lucid
 
 export interface Student {
   nim: string;
-  nama: string;
+  nama?: string;
   fakultas_prodi?: string;
   smt: number;
+  ips_smt1?: number;
+  ips_smt2?: number;
+  delta_ips?: number;
+  golongan_ukt?: number;
+  status_cuti?: number;
+  kode_wilayah?: number;
+  asal_daerah?: string;
+  wilayah?: string;
   skor_prediksi?: number;
   status_risiko: string;
 }

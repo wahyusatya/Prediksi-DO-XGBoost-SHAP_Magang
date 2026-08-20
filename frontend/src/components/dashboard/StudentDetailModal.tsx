@@ -46,7 +46,7 @@ interface ShapValue {
 interface StudentDetail {
   mahasiswa: {
     nim: string;
-    nama: string;
+    nama?: string;
     fakultas_prodi: string;
     semester: number;
     ips_smt1?: number;
@@ -222,12 +222,12 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
     const mhs = detail.mahasiswa;
     const lines = [
       `=== DETAIL INTERVENSI KEBIJAKAN DPA / WAKIL REKTOR ===`,
-      `Mahasiswa     : ${mhs.nama} (${mhs.nim})`,
+      `Mahasiswa (NIM): ${mhs.nim}`,
       `Program Studi : ${mhs.fakultas_prodi}`,
-      `Semester      : ${mhs.semester}`,
+      `Semester      : ${mhs.semester} (Semester 2)`,
       `Skor Prediksi : ${detail.prediksi.skor_prediksi_model}% [Kategori: ${detail.prediksi.status_risiko}]`,
       `IPK / IPS S2  : ${mhs.ipk ?? '-'} / ${mhs.ips_smt2 ?? '-'}`,
-      `Kehadiran     : ${mhs.persen_kehadiran_smt2 ?? '-'}% | MK Cekal UAS: ${mhs.mk_cekal_uas_smt2 ?? 0}`,
+      `Golongan UKT  : UKT ${mhs.golongan_ukt ?? '-'} | Status Cuti: ${mhs.status_cuti ? 'Cuti' : 'Aktif'}`,
       ``,
       `--- RENCANA AKSI & REKOMENDASI INTERVENSI ---`,
     ];
@@ -249,12 +249,6 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     });
-  };
-
-  const getInitials = (name: string) => {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-    return (parts[0][0] + parts[1][0]).toUpperCase();
   };
 
   return (
@@ -317,11 +311,11 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                   {/* Student Identity */}
                   <div className="flex-1 min-w-0 text-center sm:text-left">
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-1.5">
-                      <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 flex items-center justify-center font-bold text-xs shrink-0">
-                        {getInitials(detail.mahasiswa.nama)}
+                      <div className="w-8 h-8 rounded-xl bg-blue-600 dark:bg-blue-500 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
+                        <UserCheck className="w-4 h-4" />
                       </div>
-                      <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white truncate">
-                        {detail.mahasiswa.nama}
+                      <h3 className="text-base sm:text-lg font-mono font-bold text-slate-900 dark:text-white truncate">
+                        {detail.mahasiswa.nim}
                       </h3>
                       <span className={`px-2.5 py-0.5 text-[11px] rounded-full border ${getRiskBadge(detail.prediksi.status_risiko)}`}>
                         Status: {detail.prediksi.status_risiko}
@@ -350,48 +344,36 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                 </div>
               </div>
 
-              {/* ── 8 Academic & Behavioral Metrics Grid ────────── */}
+              {/* ── 6 Parameter Input Model Grid ────────── */}
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                     <Award className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
-                    Profil Akademik & Riwayat Perkuliahan
+                    Profil Akademik & Parameter Prediksi
                   </h4>
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">8 Parameter Input Model</span>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">6 Parameter Input Model</span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                   <StatCard
-                    label="IPK Kumulatif"
-                    value={detail.mahasiswa.ipk?.toFixed(2) ?? '-'}
+                    label="IPK Kumulatif (Smt 1-2)"
+                    value={detail.mahasiswa.ipk !== undefined && detail.mahasiswa.ipk !== null ? Number(detail.mahasiswa.ipk).toFixed(2) : '-'}
                     sub="Skala 4.00"
                     accent="text-blue-700 dark:text-blue-400"
                   />
                   <StatCard
                     label="IPS Semester 1"
-                    value={detail.mahasiswa.ips_smt1?.toFixed(2) ?? '-'}
+                    value={detail.mahasiswa.ips_smt1 !== undefined && detail.mahasiswa.ips_smt1 !== null ? Number(detail.mahasiswa.ips_smt1).toFixed(2) : '-'}
                   />
                   <StatCard
                     label="IPS Semester 2"
-                    value={detail.mahasiswa.ips_smt2?.toFixed(2) ?? '-'}
+                    value={detail.mahasiswa.ips_smt2 !== undefined && detail.mahasiswa.ips_smt2 !== null ? Number(detail.mahasiswa.ips_smt2).toFixed(2) : '-'}
                   />
                   <StatCard
                     label="Delta IPS (S1→S2)"
-                    value={detail.mahasiswa.delta_ips !== undefined ? (detail.mahasiswa.delta_ips >= 0 ? '+' : '') + detail.mahasiswa.delta_ips.toFixed(2) : '-'}
-                    sub={detail.mahasiswa.delta_ips !== undefined ? (detail.mahasiswa.delta_ips >= 0 ? 'Tren Positif' : 'Tren Menurun') : undefined}
-                    accent={detail.mahasiswa.delta_ips !== undefined ? (detail.mahasiswa.delta_ips >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400') : undefined}
-                  />
-                  <StatCard
-                    label="Kehadiran Smt 2"
-                    value={detail.mahasiswa.persen_kehadiran_smt2 !== undefined ? `${detail.mahasiswa.persen_kehadiran_smt2}%` : '-'}
-                    sub={detail.mahasiswa.persen_kehadiran_smt2 !== undefined && detail.mahasiswa.persen_kehadiran_smt2 < 75 ? 'Di bawah batas 75%' : 'Memenuhi syarat'}
-                    isAlert={detail.mahasiswa.persen_kehadiran_smt2 !== undefined && detail.mahasiswa.persen_kehadiran_smt2 < 75}
-                  />
-                  <StatCard
-                    label="MK Cekal UAS"
-                    value={detail.mahasiswa.mk_cekal_uas_smt2 ?? 0}
-                    sub={detail.mahasiswa.mk_cekal_uas_smt2 && detail.mahasiswa.mk_cekal_uas_smt2 > 0 ? 'Otomatis Nilai E' : 'Bebas Cekal'}
-                    isAlert={Boolean(detail.mahasiswa.mk_cekal_uas_smt2 && detail.mahasiswa.mk_cekal_uas_smt2 > 0)}
+                    value={detail.mahasiswa.delta_ips !== undefined && detail.mahasiswa.delta_ips !== null ? (Number(detail.mahasiswa.delta_ips) >= 0 ? '+' : '') + Number(detail.mahasiswa.delta_ips).toFixed(2) : '-'}
+                    sub={detail.mahasiswa.delta_ips !== undefined && detail.mahasiswa.delta_ips !== null ? (Number(detail.mahasiswa.delta_ips) >= 0 ? 'Tren Positif' : 'Tren Menurun') : undefined}
+                    accent={detail.mahasiswa.delta_ips !== undefined && detail.mahasiswa.delta_ips !== null ? (Number(detail.mahasiswa.delta_ips) >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400') : undefined}
                   />
                   <StatCard
                     label="Golongan UKT"
@@ -400,9 +382,9 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
                   />
                   <StatCard
                     label="Status Cuti"
-                    value={detail.mahasiswa.status_cuti === 1 ? 'Ada Riwayat' : 'Aktif Penuh'}
-                    sub={detail.mahasiswa.status_cuti === 1 ? 'Cuti Akademik' : 'Tanpa Cuti'}
-                    accent={detail.mahasiswa.status_cuti === 1 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}
+                    value={detail.mahasiswa.status_cuti && detail.mahasiswa.status_cuti > 0 ? `${detail.mahasiswa.status_cuti} Semester` : 'Aktif Penuh'}
+                    sub={detail.mahasiswa.status_cuti && detail.mahasiswa.status_cuti > 0 ? 'Pernah Cuti' : 'Tanpa Cuti'}
+                    accent={detail.mahasiswa.status_cuti && detail.mahasiswa.status_cuti > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'}
                   />
                 </div>
               </div>

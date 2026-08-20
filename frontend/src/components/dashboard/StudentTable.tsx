@@ -13,7 +13,10 @@ import {
   GraduationCap, 
   Layers,
   Building2,
-  AlertOctagon
+  AlertOctagon,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 const ITEMS_PER_PAGE = 10;
@@ -41,6 +44,8 @@ export default function StudentTable({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRiskTab, setSelectedRiskTab] = useState<'semua' | 'tinggi' | 'sedang' | 'rendah'>('semua');
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortField, setSortField] = useState<'skor_prediksi' | 'nim' | 'fakultas_prodi' | 'ips_smt1' | 'ips_smt2' | 'delta_ips'>('skor_prediksi');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isFakultasOpen, setIsFakultasOpen] = useState(false);
   const [fakultasSearch, setFakultasSearch] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -102,7 +107,6 @@ export default function StudentTable({
       const matchesSearch = 
         !q ||
         student.nim.toLowerCase().includes(q) ||
-        student.nama.toLowerCase().includes(q) ||
         (student.fakultas_prodi && student.fakultas_prodi.toLowerCase().includes(q));
 
       const matchesFakultas =
@@ -125,14 +129,38 @@ export default function StudentTable({
     );
   }, [fakultasOptions, fakultasSearch]);
 
+  const handleSort = (field: typeof sortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection(field === 'nim' || field === 'fakultas_prodi' ? 'asc' : 'desc');
+    }
+    setCurrentPage(1);
+  };
+
+  const sortedData = useMemo(() => {
+    return [...filteredData].sort((a, b) => {
+      let valA: any = a[sortField] ?? 0;
+      let valB: any = b[sortField] ?? 0;
+
+      if (typeof valA === 'string') {
+        return sortDirection === 'asc'
+          ? valA.localeCompare(valB)
+          : valB.localeCompare(valA);
+      }
+      return sortDirection === 'asc' ? Number(valA) - Number(valB) : Number(valB) - Number(valA);
+    });
+  }, [filteredData, sortField, sortDirection]);
+
   // Reset to page 1 when filters change
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / ITEMS_PER_PAGE));
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / ITEMS_PER_PAGE));
   const safePage = Math.min(currentPage, totalPages);
   
   // Get current page data
   const startIdx = (safePage - 1) * ITEMS_PER_PAGE;
   const endIdx = startIdx + ITEMS_PER_PAGE;
-  const pageData = filteredData.slice(startIdx, endIdx);
+  const pageData = sortedData.slice(startIdx, endIdx);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
@@ -345,14 +373,14 @@ export default function StudentTable({
               </div>
             )}
 
-            {/* Search Input (NIM / Nama / Prodi) */}
+            {/* Search Input (NIM / Prodi) */}
             <div className="relative min-w-[240px]">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
                 <Search className="h-4 w-4" />
               </div>
               <input
                 type="text"
-                placeholder="Cari NIM, Nama, atau Prodi..."
+                placeholder="Cari NIM atau Program Studi..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9 pr-8 py-2 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-medium text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 placeholder:text-slate-400 dark:placeholder:text-slate-500 hover:border-slate-300 dark:hover:border-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-600/20 focus:border-blue-600 w-full shadow-xs transition-colors"
@@ -428,20 +456,101 @@ export default function StudentTable({
       {/* Table Data Matrix */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-800">
-          <thead className="bg-slate-50/80 dark:bg-slate-800/70 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+          <thead className="bg-slate-50/80 dark:bg-slate-800/70 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider select-none">
             <tr>
-              <th scope="col" className="px-6 py-3.5 text-left">Mahasiswa</th>
-              <th scope="col" className="px-6 py-3.5 text-left">Fakultas / Program Studi</th>
-              <th scope="col" className="px-6 py-3.5 text-center">Semester</th>
-              <th scope="col" className="px-6 py-3.5 text-left min-w-[160px]">Skor Probabilitas DO</th>
-              <th scope="col" className="px-6 py-3.5 text-center">Status Risiko</th>
-              <th scope="col" className="px-6 py-3.5 text-right">Aksi</th>
+              <th scope="col" className="px-5 py-3.5 text-left">
+                <button 
+                  onClick={() => handleSort('nim')}
+                  className="inline-flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group text-left"
+                  title="Urutkan berdasarkan NIM"
+                >
+                  <span>NIM Mahasiswa</span>
+                  {sortField === 'nim' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-5 py-3.5 text-left">
+                <button 
+                  onClick={() => handleSort('fakultas_prodi')}
+                  className="inline-flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group text-left"
+                  title="Urutkan berdasarkan Program Studi"
+                >
+                  <span>Fakultas / Program Studi</span>
+                  {sortField === 'fakultas_prodi' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-3 py-3.5 text-center">Semester</th>
+              <th scope="col" className="px-3 py-3.5 text-center">
+                <button 
+                  onClick={() => handleSort('ips_smt1')}
+                  className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group"
+                  title="Klik untuk mengurutkan nilai IPS Semester 1"
+                >
+                  <span>IPS S1</span>
+                  {sortField === 'ips_smt1' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-3 py-3.5 text-center">
+                <button 
+                  onClick={() => handleSort('ips_smt2')}
+                  className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group"
+                  title="Klik untuk mengurutkan nilai IPS Semester 2"
+                >
+                  <span>IPS S2</span>
+                  {sortField === 'ips_smt2' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-3 py-3.5 text-center">
+                <button 
+                  onClick={() => handleSort('delta_ips')}
+                  className="inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group"
+                  title="Klik untuk mengurutkan nilai Perubahan IPS"
+                >
+                  <span>Delta IPS</span>
+                  {sortField === 'delta_ips' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-5 py-3.5 text-left min-w-[150px]">
+                <button 
+                  onClick={() => handleSort('skor_prediksi')}
+                  className="inline-flex items-center gap-1.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors uppercase tracking-wider font-bold group text-left"
+                  title="Urutkan berdasarkan Skor Risiko DO"
+                >
+                  <span>Skor Probabilitas DO</span>
+                  {sortField === 'skor_prediksi' ? (
+                    sortDirection === 'asc' ? <ArrowUp className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" /> : <ArrowDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  ) : (
+                    <ArrowUpDown className="w-3 h-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                  )}
+                </button>
+              </th>
+              <th scope="col" className="px-5 py-3.5 text-center">Status Risiko</th>
+              <th scope="col" className="px-5 py-3.5 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
             {pageData.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
+                <td colSpan={9} className="px-6 py-12 text-center text-slate-500 dark:text-slate-400">
                   <div className="flex flex-col items-center justify-center space-y-2">
                     <User className="w-8 h-8 text-slate-300 dark:text-slate-600" />
                     <p className="font-semibold text-slate-700 dark:text-slate-200">Tidak ada data mahasiswa yang cocok dengan kriteria filter.</p>
@@ -472,17 +581,14 @@ export default function StudentTable({
                     key={student.nim} 
                     className="hover:bg-blue-50/40 dark:hover:bg-slate-800/60 transition-colors duration-150 group"
                   >
-                    {/* Mahasiswa Info & Avatar */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold text-xs shrink-0 border border-slate-200 dark:border-slate-700">
-                          {getInitials(student.nama)}
+                    {/* NIM Mahasiswa Info */}
+                    <td className="px-5 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-blue-800/60">
+                          <User className="w-4 h-4" />
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900 dark:text-white text-xs leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
-                            {student.nama}
-                          </p>
-                          <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                          <p className="font-mono font-bold text-slate-900 dark:text-white text-xs leading-tight group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                             {student.nim}
                           </p>
                         </div>
@@ -490,7 +596,7 @@ export default function StudentTable({
                     </td>
 
                     {/* Fakultas & Prodi */}
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                    <td className="px-5 py-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
                       <div className="flex items-center gap-1.5">
                         <GraduationCap className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500 shrink-0" />
                         <span className="font-medium text-slate-700 dark:text-slate-300">{student.fakultas_prodi || '-'}</span>
@@ -498,14 +604,43 @@ export default function StudentTable({
                     </td>
 
                     {/* SMT */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="px-3 py-4 whitespace-nowrap text-center">
                       <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[11px] border border-slate-200/60 dark:border-slate-700/60">
                         Smt {student.smt ?? 2}
                       </span>
                     </td>
 
+                    {/* IPS Smt 1 */}
+                    <td className="px-3 py-4 whitespace-nowrap text-center">
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                        {student.ips_smt1 !== undefined && student.ips_smt1 !== null ? Number(student.ips_smt1).toFixed(2) : '-'}
+                      </span>
+                    </td>
+
+                    {/* IPS Smt 2 */}
+                    <td className="px-3 py-4 whitespace-nowrap text-center">
+                      <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 text-xs">
+                        {student.ips_smt2 !== undefined && student.ips_smt2 !== null ? Number(student.ips_smt2).toFixed(2) : '-'}
+                      </span>
+                    </td>
+
+                    {/* Delta IPS */}
+                    <td className="px-3 py-4 whitespace-nowrap text-center">
+                      {student.delta_ips !== undefined && student.delta_ips !== null ? (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md font-mono text-[11px] font-bold ${
+                          student.delta_ips > 0
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60'
+                            : student.delta_ips < 0
+                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+                        }`}>
+                          {student.delta_ips > 0 ? `+${Number(student.delta_ips).toFixed(2)}` : Number(student.delta_ips).toFixed(2)}
+                        </span>
+                      ) : '-'}
+                    </td>
+
                     {/* Skor Probabilitas DO with mini progress bar */}
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-5 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2.5">
                         <div className="flex-1 h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden max-w-[90px]">
                           <div
@@ -522,7 +657,7 @@ export default function StudentTable({
                     </td>
 
                     {/* Status Risiko */}
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                    <td className="px-5 py-4 whitespace-nowrap text-center">
                       <span className={`px-2.5 py-1 inline-flex items-center gap-1 text-[11px] rounded-full border ${getRiskBadge(student.status_risiko)}`}>
                         <span className={`w-1.5 h-1.5 rounded-full ${isHigh ? 'bg-rose-500' : isMed ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                         {student.status_risiko}
