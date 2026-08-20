@@ -6,7 +6,7 @@ import KPICards, { Student } from '@/components/dashboard/KPICards';
 import MacroInsightsCard from '@/components/dashboard/MacroInsightsCard';
 import StudentTable, { extractFakultas } from '@/components/dashboard/StudentTable';
 import StudentDetailModal from '@/components/dashboard/StudentDetailModal';
-import { Loader2, AlertCircle, RefreshCw, Sparkles, Shield, Building2 } from 'lucide-react';
+import { Loader2, AlertCircle, RefreshCw, Building2 } from 'lucide-react';
 import { getApiBaseUrl } from '@/utils/api';
 
 export default function DashboardPage() {
@@ -76,23 +76,17 @@ export default function DashboardPage() {
         {/* Executive Hero Context Section */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8 pb-6 border-b border-slate-200/80 dark:border-slate-800">
           <div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-800/70 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-                <Shield className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                Executive Information System
-              </span>
-              {lastUpdated && (
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium hidden sm:inline">
-                  • Terakhir diperbarui: {lastUpdated} WITA
-                </span>
-              )}
-            </div>
             <h1 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
               Ringkasan Eksekutif & Intelijen Drop Out
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-3xl leading-relaxed">
               Monitoring dini probabilitas drop out mahasiswa semester 2 berbasis Explainable AI (XGBoost + SHAP) terintegrasi pada 3 pilar: Akademik, Finansial & Wilayah, serta Kedisiplinan & Keaktifan.
             </p>
+            {lastUpdated && (
+              <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500 font-medium">
+                Terakhir diperbarui: {lastUpdated} WITA
+              </p>
+            )}
           </div>
 
           {/* Action Controls */}
@@ -138,7 +132,7 @@ export default function DashboardPage() {
             </div>
           </div>
         ) : (
-          <div className="animate-in fade-in duration-300 space-y-2">
+          <div className="animate-in fade-in duration-300 space-y-6">
             {/* 1. KPI Risk Overview Matrix */}
             <KPICards data={filteredData} />
 

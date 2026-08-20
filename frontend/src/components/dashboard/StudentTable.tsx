@@ -11,7 +11,6 @@ import {
   X, 
   User, 
   GraduationCap, 
-  Sparkles, 
   Layers,
   Building2,
   AlertOctagon
@@ -165,13 +164,13 @@ export default function StudentTable({
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Daftar Hasil Prediksi Risiko Mahasiswa</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Daftar Prediksi Risiko</h3>
               <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
                 {filteredData.length} Mahasiswa
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Klik <strong>Analisis XAI & Intervensi</strong> pada setiap baris untuk membedah akar kausalitas & rekomendasi DPA.
+              Klik <strong>Detail & Intervensi</strong> pada setiap baris untuk melihat analisis faktor penyebab & rekomendasi.
             </p>
           </div>
 
@@ -436,7 +435,7 @@ export default function StudentTable({
               <th scope="col" className="px-6 py-3.5 text-center">Semester</th>
               <th scope="col" className="px-6 py-3.5 text-left min-w-[160px]">Skor Probabilitas DO</th>
               <th scope="col" className="px-6 py-3.5 text-center">Status Risiko</th>
-              <th scope="col" className="px-6 py-3.5 text-right">Tindakan Eksekutif</th>
+              <th scope="col" className="px-6 py-3.5 text-right">Aksi</th>
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -471,7 +470,7 @@ export default function StudentTable({
                 return (
                   <tr 
                     key={student.nim} 
-                    className="hover:bg-blue-50/30 dark:hover:bg-slate-800/50 transition-colors group"
+                    className="hover:bg-blue-50/40 dark:hover:bg-slate-800/60 transition-colors duration-150 group"
                   >
                     {/* Mahasiswa Info & Avatar */}
                     <td className="px-6 py-4 whitespace-nowrap">
@@ -536,8 +535,7 @@ export default function StudentTable({
                         onClick={() => onDetailClick?.(student.nim)}
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 rounded-xl text-blue-700 dark:text-blue-300 font-bold hover:bg-blue-50 dark:hover:bg-slate-700 hover:border-blue-300 dark:hover:border-slate-600 transition-all shadow-2xs hover:shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600/30 text-xs"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                        Analisis XAI & Intervensi
+                        Detail & Intervensi
                         <ChevronRight className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
                       </button>
                     </td>
@@ -560,7 +558,7 @@ export default function StudentTable({
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={safePage <= 1}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               Sebelumnya
@@ -573,7 +571,7 @@ export default function StudentTable({
             <button
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage >= totalPages}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs"
+              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shadow-2xs"
             >
               Selanjutnya
               <ChevronRight className="w-3.5 h-3.5" />

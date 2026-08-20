@@ -49,14 +49,6 @@ export default function RootLayout({
         />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors duration-200">
-        {/* <!--
-          THESIS: Institutional executive intelligence command interface for university leaders refusing generic flat SaaS cards in favor of authoritative academic rigor and actionable policy clarity.
-          OWN-WORLD: Oxford Navy, Slate neutrals, Emerald, Amber, and Crimson semantic risk indicators with multi-pillar governance mapping (WR I, WR II, WR III).
-          STORY: University executives instantly grasp macro dropout risk distribution, identify systemic triggers across 3 pillars, and dispatch targeted prescriptive interventions per student.
-          FIRST VIEWPORT: Executive Command Header, Executive Risk Distribution Matrix with interactive SVG Donut, Macro Governance Pillars, and Instant Student Triage Table.
-          FORM: Executive Command Intelligence Matrix, seed f52431d5.
-          FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
-        --> */}
         <ThemeProvider>
           {children}
         </ThemeProvider>

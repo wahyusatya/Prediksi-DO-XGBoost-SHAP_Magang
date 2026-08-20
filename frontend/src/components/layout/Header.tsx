@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ShieldCheck, Sparkles, Building2, Sun, Moon, Laptop } from 'lucide-react';
+import { ShieldCheck, Building2, Sun, Moon, Laptop } from 'lucide-react';
 import { useTheme } from '@/context/ThemeContext';
 
 export default function Header() {
@@ -21,13 +21,9 @@ export default function Header() {
                 <span className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
                   SIPRIDO <span className="text-blue-700 dark:text-blue-400">EIS</span>
                 </span>
-                <span className="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200/70 dark:border-blue-800/70">
-                  <Sparkles className="w-3 h-3 text-blue-600 dark:text-blue-400" />
-                  Executive Intelligence
-                </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium hidden sm:block">
-                Sistem Informasi Eksekutif Prediksi & Intervensi Drop Out Mahasiswa
+                Prediksi & Intervensi Drop Out Mahasiswa
               </p>
             </div>
           </div>
@@ -40,9 +36,9 @@ export default function Header() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                 <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
               </span>
-              <span className="font-semibold text-slate-700 dark:text-slate-200">XGBoost & SHAP</span>
+              <span className="font-semibold text-slate-700 dark:text-slate-200">Model ML</span>
               <span className="text-slate-300 dark:text-slate-600">•</span>
-              <span className="text-slate-500 dark:text-slate-400">Real-time Inference</span>
+              <span className="text-slate-500 dark:text-slate-400">Aktif</span>
             </div>
 
             {/* Dark Mode Quick Toggle */}

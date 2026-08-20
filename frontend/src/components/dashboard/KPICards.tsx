@@ -88,16 +88,16 @@ export default function KPICards({ data }: KPICardsProps) {
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-slate-200/80 dark:border-slate-800 p-6 mb-8 transition-colors duration-200">
+    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xs border border-slate-200/80 dark:border-slate-800 p-5 sm:p-6 mb-6 transition-colors duration-200">
       {/* Header bar of KPI matrix */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-5 mb-6 border-b border-slate-100 dark:border-slate-800">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-4 mb-5 border-b border-slate-100 dark:border-slate-800">
         <div className="flex items-center gap-2.5">
           <div className="p-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-100 dark:border-blue-800/60">
             <Activity className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-slate-900 dark:text-white">Distribusi Status Risiko Mahasiswa</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Agregasi probabilitas drop out berdasarkan pemodelan XGBoost & SHAP</p>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">Distribusi Risiko</h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Probabilitas drop out mahasiswa semester 2</p>
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 text-slate-600 dark:text-slate-300 self-start sm:self-auto">
@@ -139,7 +139,7 @@ export default function KPICards({ data }: KPICardsProps) {
           {cards.map((item) => (
             <div
               key={item.label}
-              className={`rounded-xl border ${item.border} ${item.bg} p-4.5 flex flex-col justify-between transition-all duration-200 hover:shadow-sm hover:-translate-y-0.5`}
+              className={`rounded-xl border ${item.border} ${item.bg} p-4.5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-1`}
             >
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -178,7 +178,7 @@ export default function KPICards({ data }: KPICardsProps) {
 
       {/* High-risk executive summary callout if applicable */}
       {highRisk > 0 && (
-        <div className="mt-6 pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs bg-rose-50/50 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-800/50 rounded-xl px-4 py-3 text-rose-800 dark:text-rose-300">
+        <div className="mt-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs bg-rose-50/50 dark:bg-rose-950/30 border border-rose-200/60 dark:border-rose-800/50 rounded-xl px-4 py-3 text-rose-800 dark:text-rose-300">
           <div className="flex items-center gap-2 font-medium">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>

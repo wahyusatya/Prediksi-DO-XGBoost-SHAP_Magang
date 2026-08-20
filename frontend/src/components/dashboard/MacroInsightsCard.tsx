@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '@/utils/api';
-import { Loader2, BarChart3, GraduationCap, Wallet, UserCheck, Sparkles, Building } from 'lucide-react';
+import { Loader2, BarChart3, GraduationCap, Wallet, UserCheck, Building } from 'lucide-react';
 
 interface PilarData {
   jumlah: number;
@@ -132,12 +132,7 @@ export default function MacroInsightsCard({ selectedFakultas = '' }: MacroInsigh
             <BarChart3 className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">Analisis Strategis Pemicu Risiko Makro</h3>
-              <span className="text-[10px] font-bold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 border border-blue-200/80 dark:border-blue-800/60 px-2 py-0.5 rounded-full uppercase tracking-wider">
-                XAI Aggregation
-              </span>
-            </div>
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Analisis Pemicu Risiko</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
               Rata-rata kontribusi pemicu risiko dari <strong className="text-slate-800 dark:text-slate-200">{data.total_mahasiswa}</strong> mahasiswa
               {selectedFakultas ? (
@@ -154,8 +149,8 @@ export default function MacroInsightsCard({ selectedFakultas = '' }: MacroInsigh
 
         <div className="flex items-center gap-2 self-start sm:self-auto">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-full">
-            <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            Pemetaan Wewenang Rektorat
+            <Building className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
+            Pemetaan Wewenang
           </span>
         </div>
       </div>
@@ -167,7 +162,7 @@ export default function MacroInsightsCard({ selectedFakultas = '' }: MacroInsigh
           return (
             <div 
               key={pilar} 
-              className={`relative overflow-hidden rounded-xl border ${config.borderLight} ${config.bgLight} p-4.5 flex flex-col justify-between transition-all duration-200 hover:shadow-xs`}
+              className={`relative overflow-hidden rounded-xl border ${config.borderLight} ${config.bgLight} p-4.5 flex flex-col justify-between transition-all duration-200 hover:shadow-md hover:-translate-y-0.5`}
             >
               <div>
                 <div className="flex items-center justify-between gap-2 mb-3">

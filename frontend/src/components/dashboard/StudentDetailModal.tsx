@@ -15,7 +15,6 @@ import {
   Wallet, 
   UserCheck, 
   ShieldAlert, 
-  Sparkles,
   Award,
   AlertTriangle,
   Clock,
@@ -142,7 +141,7 @@ function RiskGauge({ score, status }: { score: number; status: string }) {
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className={`text-2xl font-black ${color.text} tabular-nums tracking-tight`}>{score}%</span>
-        <span className="text-[9px] font-extrabold text-slate-400 dark:text-slate-500 uppercase tracking-widest mt-0.5">Prob. DO</span>
+        <span className="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mt-0.5">Risiko DO</span>
       </div>
     </div>
   );
@@ -265,16 +264,16 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh] border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150 my-auto transition-colors duration-200">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col max-h-[92vh] border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-150 my-auto transition-colors duration-200">
         {/* Header */}
         <div className="flex justify-between items-center px-6 py-4.5 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800/80 dark:to-slate-900">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-xl bg-blue-600 dark:bg-blue-500 text-white shadow-xs">
-              <Sparkles className="w-4 h-4" />
+              <GraduationCap className="w-4 h-4" />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900 dark:text-white">Detail Analisis Risiko & Rekomendasi Intervensi</h2>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Explainable AI (XGBoost + SHAP) & Prescriptive Policy Plan</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Analisis kontribusi faktor risiko & rencana intervensi</p>
             </div>
           </div>
           <button 
@@ -412,8 +411,8 @@ export default function StudentDetailModal({ nim, onClose }: StudentDetailModalP
               <div>
                 <div className="flex items-center justify-between mb-2.5">
                   <h4 className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                    Top 3 Faktor Kausal Pemicu Risiko (Explainable AI SHAP)
+                    <ShieldAlert className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                    Top 3 Faktor Pemicu Risiko
                   </h4>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">Kontribusi Relatif</span>
                 </div>
