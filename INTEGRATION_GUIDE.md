@@ -33,11 +33,9 @@ Dokumen ini ditujukan untuk **Pengembang (Developer) & Tim IT Kampus** yang ingi
    ```bash
    docker compose up -d --build
    ```
-3. **Eksekusi Migrasi Database (Jika Meng-update Database Existing)**:
+3. **Inisialisasi Database (Jika Belum Otomatis Termuat)**:
    ```bash
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_asal_daerah.sql
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_kehadiran.sql
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_intervensi.sql
+   docker exec -i db_siprido psql -U root -d db_siprido_eis < init_db.sql
    ```
 4. **Verifikasi Server & OpenAPI Docs**:
    - API Docs: `http://localhost:8000/docs`
@@ -52,7 +50,7 @@ Untuk menghubungkan data dari SIAKAD/IES kampus ke Siprido EIS, developer dapat 
 
 ### Metode 1: Push Data Massal via REST API (`POST /api/v1/mahasiswa/bulk-sync`)
 
-SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap pergantian periode/bulan dengan **8 fitur lengkap**:
+SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap pergantian periode/bulan dengan **6 fitur riil**:
 
 * **Endpoint**: `POST /api/v1/mahasiswa/bulk-sync`
 * **Content-Type**: `application/json`
@@ -62,17 +60,14 @@ SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap p
     "data": [
       {
         "nim": "2401010099",
-        "nama": "Gede Mahardika",
-        "fakultas_prodi": "FT/Teknik Informatika",
+        "fakultas_prodi": "FTK/Teknik Informatika",
         "smt": 2,
         "ips_smt1": 2.40,
         "ips_smt2": 2.10,
         "golongan_ukt": 5,
         "status_cuti": 0,
         "kode_wilayah": 2,
-        "asal_daerah": "Seririt",
-        "persen_kehadiran_smt2": 68.50,
-        "mk_cekal_uas_smt2": 2
+        "asal_daerah": "Kec. Seririt, Kab. Buleleng"
       }
     ]
   }
@@ -81,7 +76,7 @@ SIAKAD dapat mengirimkan data mahasiswa semester 2 secara otomatis pada setiap p
   Siprido akan langsung menyimpan data ke DB, menghitung skor prediksi DO real-time secara dinamis, dan meng-upsert hasilnya ke tabel `prediksi_do`.
 
 * **Testing Integrasi Otomatis**:
-  Tersedia skrip simulasi pengiriman batch 120 mahasiswa di root direktori:
+  Tersedia skrip simulasi pengiriman batch mahasiswa di root direktori:
   ```bash
   python test_bulk_sync_scenario.py
   ```
@@ -107,7 +102,7 @@ Untuk kebutuhan dashboard IES Rektorat / pimpinan universitas yang memerlukan ag
 
 ## 5. Panduan MLOps: Pelatihan Ulang Model (Automated Retraining)
 
-Seiring bertambahnya data angkatan lulusan baru, model XGBoost perlu dilatih ulang secara berkala agar makin presisi.
+Seiring bertambahnya data angkatan baru, model XGBoost dapat dilatih ulang secara berkala agar makin presisi.
 
 ### Melatih Ulang & Hot-Reload via REST API (Tanpa Restart Server)
 
@@ -119,13 +114,12 @@ Tim IT/Admin dapat memicu *retraining* kapan saja melalui API:
     "status": "success",
     "message": "Model XGBoost berhasil dilatih ulang & di-hot reload di memory API.",
     "feature_importances": {
-      "ips_smt1": 0.4125,
-      "persen_kehadiran_smt2": 0.2850,
-      "mk_cekal_uas_smt2": 0.1520,
-      "status_cuti": 0.0810,
-      "golongan_ukt": 0.0410,
-      "delta_ips": 0.0185,
-      "kode_wilayah": 0.0100
+      "ips_smt1": 0.3850,
+      "ips_smt2": 0.2920,
+      "delta_ips": 0.1450,
+      "status_cuti": 0.0880,
+      "golongan_ukt": 0.0550,
+      "kode_wilayah": 0.0350
     }
   }
   ```

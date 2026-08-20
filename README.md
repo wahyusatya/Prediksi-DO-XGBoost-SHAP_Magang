@@ -41,11 +41,9 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
    ```bash
    docker compose up -d --build
    ```
-3. Jalankan script migrasi database (jika memperbarui database yang sudah ada):
+3. Inisialisasi struktur database (jika belum otomatis termuat):
    ```bash
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_asal_daerah.sql
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_kehadiran.sql
-   docker exec -i db_siprido psql -U root -d db_siprido_eis < migrate_intervensi.sql
+   docker exec -i db_siprido psql -U root -d db_siprido_eis < init_db.sql
    ```
 4. **Verifikasi Backend**: Buka browser ke **`http://localhost:8000/docs`** untuk melihat Swagger / OpenAPI Interactive Documentation.
 
@@ -55,12 +53,9 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
 
 1. Install **PostgreSQL 15** lokal. Buat database bernama `db_siprido_eis` dengan kredensial:
    - User: `root` | Password: `rootpassword` | Port: `5433`
-2. Impor struktur tabel & data initial ke PostgreSQL:
+2. Impor struktur tabel & relasi ke PostgreSQL:
    ```bash
    psql -U root -d db_siprido_eis -f init_db.sql
-   psql -U root -d db_siprido_eis -f migrate_asal_daerah.sql
-   psql -U root -d db_siprido_eis -f migrate_kehadiran.sql
-   psql -U root -d db_siprido_eis -f migrate_intervensi.sql
    ```
 3. Masuk ke direktori `app` dan buat virtual environment Python:
    ```bash
@@ -74,7 +69,11 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
    ```bash
    pip install -r requirements.txt
    ```
-6. Jalankan server FastAPI Backend:
+6. *(Opsional)* Jalankan pipeline ETL untuk memproses data Excel riil ke PostgreSQL & hitung skor:
+   ```bash
+   python etl_excel_data.py --load-db
+   ```
+7. Jalankan server FastAPI Backend:
    ```bash
    uvicorn main:app --reload --port 8000
    ```
@@ -103,28 +102,34 @@ Anda dapat memilih **salah satu** dari 2 opsi di bawah ini:
 
 ## Perintah Operasional Penting
 
-### 1. Melatih Ulang Model Machine Learning (Retraining)
-Jika ada pembaruan algoritma atau data baru di database, pemicu retraining dapat dipanggil melalui API tanpa perlu restart server:
+### 1. Pipeline ETL Data Mahasiswa Riil
+Memproses file raw Excel ke CSV/Excel bersih dan menyinkronkan langsung ke database:
+```bash
+python app/etl_excel_data.py --load-db
+```
+
+### 2. Melatih Ulang Model Machine Learning (Retraining)
+Jika ada data baru di database, pemicu retraining dapat dipanggil melalui API tanpa perlu restart server:
 ```bash
 curl -X POST http://localhost:8000/api/v1/admin/retrain
 ```
 
-### 2. Mengimpor Data Massal dari SIAKAD / IES
+### 3. Mengimpor Data Massal dari SIAKAD / IES
 Sistem menyediakan REST API integrasi massal bagi SIAKAD:
 ```bash
 # Endpoint: POST http://localhost:8000/api/v1/mahasiswa/bulk-sync
 ```
-Atau jalankan skrip simulasi bulk sync 120 mahasiswa:
+Atau jalankan skrip simulasi bulk sync mahasiswa:
 ```bash
 python test_bulk_sync_scenario.py
 ```
 
-### 3. Mengakses Analisis Pola Makro
+### 4. Mengakses Analisis Pola Makro
 ```bash
 # Endpoint: GET http://localhost:8000/api/v1/analytics/macro-insights
 ```
 
-### 4. Restart Container Backend (Docker)
+### 5. Restart Container Backend (Docker)
 Jika Anda mengubah kode Python di direktori `app/`:
 ```bash
 docker compose restart api_siprido
@@ -134,7 +139,7 @@ docker compose restart api_siprido
 
 ## Dokumen Pendukung Lengkap
 
-- [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost, 3 Pilar Kebijakan, Rekomendasi Preskriptif, & API Endpoints.
+- [**DOCUMENTATION.md**](DOCUMENTATION.md): Dokumentasi Komprehensif Arsitektur Sistem, ERD Database, Model XGBoost (6 Fitur Riil), 3 Pilar Kebijakan, Rekomendasi Preskriptif, & API Endpoints.
 - [**INTEGRATION_GUIDE.md**](INTEGRATION_GUIDE.md): Panduan Integrasi Developer dengan SIAKAD/IES, Macro Insights, Webhook Retraining, MLOps, & Production Deployment.
 
 ---
@@ -144,11 +149,13 @@ docker compose restart api_siprido
 ```
 Prediksi DO/
 ├── app/                              # Backend REST API Server (FastAPI + XGBoost)
-│   ├── database.py                   # SQLAlchemy Connection Engine
+│   ├── database.py                   # SQLAlchemy Connection Engine & Pooling
+│   ├── etl_excel_data.py             # Pipeline ETL & Data Prep Mahasiswa Smt 2
 │   ├── main.py                       # REST API Endpoints, Dynamic Scoring, SHAP, & SIAKAD Sync
 │   ├── train_model.py                # Script & Modul Retraining Model XGBoost
-│   ├── model_xgboost.joblib          # Trained Binary Model File
+│   ├── model_xgboost.joblib          # Trained Binary Model File (6 Fitur)
 │   └── requirements.txt              # Dependensi Python Backend
+├── data/                             # Dataset Excel Mentah & Hasil Pembersihan ETL
 ├── frontend/                         # Frontend Web App (Next.js 16 + Tailwind CSS v4)
 │   ├── src/app/page.tsx              # Dashboard Eksekutif Utama
 │   ├── src/components/               # Komponen UI (KPICards, MacroInsightsCard, StudentTable, StudentDetailModal)
@@ -156,11 +163,8 @@ Prediksi DO/
 ├── .env.example                      # Template Konfigurasi Environment Produksi
 ├── docker-compose.yml                # Konfigurasi Production Docker Container
 ├── Dockerfile                        # Container Config untuk FastAPI Backend
-├── init_db.sql                       # Script Inisialisasi Database awal
-├── migrate_asal_daerah.sql           # SQL Migration Kolom Asal Daerah
-├── migrate_kehadiran.sql             # SQL Migration Kolom Kehadiran & MK Cekal
-├── migrate_intervensi.sql            # Migrasi Tabel Intervensi DPA
-├── test_bulk_sync_scenario.py        # Skrip Simulasi Bulk Sync 120 Mahasiswa
+├── init_db.sql                       # Script Inisialisasi Database (3 Tabel Utama)
+├── test_bulk_sync_scenario.py        # Skrip Simulasi Bulk Sync SIAKAD
 ├── INTEGRATION_GUIDE.md              # Panduan Integrasi SIAKAD & Enterprise Setup
 └── DOCUMENTATION.md                  # Dokumentasi Teknis Komprehensif
 ```

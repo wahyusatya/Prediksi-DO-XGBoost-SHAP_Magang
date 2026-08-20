@@ -52,17 +52,14 @@ erDiagram
 
     data_mahasiswa_smt2 {
         varchar nim PK "Nomor Induk Mahasiswa"
-        varchar nama "Nama Lengkap Mahasiswa"
         varchar fakultas_prodi "Fakultas dan Program Studi"
-        int smt "Semester aktif"
+        int smt "Semester aktif (default: 2)"
         numeric ips_smt1 "IPS Semester 1"
         numeric ips_smt2 "IPS Semester 2"
         int golongan_ukt "Golongan UKT 1 hingga 7"
         int status_cuti "Jumlah Semester Cuti"
         int kode_wilayah "Kode Wilayah Geografis 1-3"
         varchar asal_daerah "Nama Asal Daerah"
-        numeric persen_kehadiran_smt2 "Persentase Kehadiran Smt 2"
-        int mk_cekal_uas_smt2 "Jumlah MK Cekal UAS hadir di bawah 75 persen"
     }
 
     prediksi_do {
@@ -87,46 +84,42 @@ erDiagram
   - `1` = Dalam Kecamatan Buleleng, Kabupaten Buleleng *(Faktor Risiko Rendah)*
   - `2` = Luar Kecamatan Buleleng, Kabupaten Buleleng *(Faktor Risiko Sedang)*
   - `3` = Luar Kecamatan & Kabupaten Buleleng *(Faktor Risiko Tinggi)*
-- **`asal_daerah`**: Nama spesifik kecamatan/kabupaten/kota asal mahasiswa.
+- **`asal_daerah`**: Format teks asal wilayah (contoh: `Kec. Seririt, Kab. Buleleng, Prov. Bali`).
 - **`status_cuti`**: `0` = Tidak Cuti, `1` = Cuti 1 Semester, `2` = Cuti 2 Semester.
 - **`golongan_ukt`**: UKT 1 (terendah) hingga UKT 7 (tertinggi).
-- **`persen_kehadiran_smt2`**: Rata-rata persentase kehadiran perkuliahan semester 2 (0.00% - 100.00%).
-- **`mk_cekal_uas_smt2`**: Jumlah mata kuliah dengan kehadiran `< 75%` (`< 12` dari 16 pertemuan) sehingga dicekal mengikuti UAS (otomatis nilai E).
 
 ---
 
 ## 3. Aturan Bisnis & Model Machine Learning (XGBoost + SHAP)
 
 ### Fitur Prediksi (`FEATURE_COLUMNS`)
-Model dilatih menggunakan **8 fitur prediktif multidimensi**:
+Model dilatih menggunakan **6 fitur riil mahasiswa Semester 2**:
 1. `ips_smt1`: IPS Semester 1
 2. `ips_smt2`: IPS Semester 2
 3. `delta_ips`: Perubahan IPS (`ips_smt2` - `ips_smt1`)
 4. `golongan_ukt`: Golongan UKT (1 - 7)
-5. `status_cuti`: Riwayat Cuti Akademik (0 / 1 / 2)
+5. `status_cuti`: Riwayat Cuti Akademik (0, 1, 2, ...)
 6. `kode_wilayah`: Kode Geografis Wilayah Asal (1 / 2 / 3)
-7. `persen_kehadiran_smt2`: Tingkat Kehadiran Kuliah (%)
-8. `mk_cekal_uas_smt2`: Jumlah MK Cekal UAS
 
 ### Aturan Monotonisitas Matematis (*Monotone Constraints*)
-Model XGBoost dikonfigurasi dengan parameter `monotone_constraints = (-1, -1, -1, 1, 1, 1, -1, 1)`:
-- Higher IPS / Positive Delta / Higher Attendance $\rightarrow$ **Menurunkan risiko DO** (-1)
-- Higher UKT / Taking Cuti / Farther Location / Blacklisted Courses $\rightarrow$ **Meningkatkan risiko DO** (+1)
+Model XGBoost dikonfigurasi dengan parameter `monotone_constraints = (-1, -1, -1, 1, 1, 1)`:
+- Higher IPS S1 / Higher IPS S2 / Positive Delta IPS $\rightarrow$ **Menurunkan risiko DO** (-1)
+- Higher UKT / Taking Cuti / Farther Location $\rightarrow$ **Meningkatkan risiko DO** (+1)
 
 ### Klasifikasi 3 Pilar Kebijakan Kampus
 Seluruh faktor risiko dipetakan ke dalam 3 pilar otoritas penanggung jawab:
 
 | Pilar Kebijakan | Fitur Terkait | Otoritas Pembuat Kebijakan |
 | :--- | :--- | :--- |
-| **Akademik** | `ips_smt1`, `ips_smt2`, `delta_ips`, `mk_cekal_uas_smt2` | Wakil Rektor I / Dekan / Kaprodi |
+| **Akademik** | `ips_smt1`, `ips_smt2`, `delta_ips` | Wakil Rektor I / Dekan / Kaprodi |
 | **Finansial & Wilayah** | `golongan_ukt`, `kode_wilayah` | Wakil Rektor II / Biro Keuangan / BAAK |
-| **Kedisiplinan & Keaktifan** | `persen_kehadiran_smt2`, `status_cuti` | Wakil Rektor III / DPA / Bagian Kemahasiswaan |
+| **Kedisiplinan & Keaktifan** | `status_cuti` | Wakil Rektor III / DPA |
 
 ### Dinamika Skor Prediksi (Skor Kontinu 5% - 98%)
-1. **IPS Semester 1 < 3.00**: **Risiko Tinggi** (Skor $70\% - 98\%$, bergantung pada kombinasi IPS, kehadiran, status cuti, dan MK cekal).
-2. **IPS Semester 1 >= 3.00**:
-   - Jika ada faktor pemicu (cuti $\ge 1$, MK cekal $\ge 1$, kehadiran $< 80\%$, delta IPS anjlok, UKT tinggi) $\rightarrow$ **Risiko Sedang** (Skor $40\% - 69\%$).
-   - Jika performa akademik & kehadiran prima $\rightarrow$ **Risiko Rendah** (Skor $5\% - 39\%$).
+1. **IPS Semester 1 < 3.00, IPS Semester 2 < 2.50, atau Cuti $\ge$ 1**: **Risiko Tinggi** (Skor $70\% - 98\%$, bergantung pada kombinasi IPS, status cuti, golongan UKT, dan kode wilayah).
+2. **IPS Semester 1 $\ge$ 3.00 & Semester 2 $\ge$ 2.50**:
+   - Jika ada faktor pemicu (delta IPS turun drastis $< -0.15$, UKT tinggi $\ge 5$, atau UKT $\ge 3$ dengan wilayah luar) $\rightarrow$ **Risiko Sedang** (Skor $40\% - 69\%$).
+   - Jika performa akademik stabil dan finansial/wilayah aman $\rightarrow$ **Risiko Rendah** (Skor $5\% - 39\%$).
 
 ### Explainable AI (SHAP) & Prescriptive Recommendation Engine
 - **Bobot Relatif SHAP (%)**: Dihitung dari kontribusi absolut tiap fitur terhadap total impak, diklasifikasikan ke level dampak:
@@ -152,17 +145,14 @@ Mengembalikan daftar seluruh mahasiswa beserta skor prediksi real-time dan statu
   "data": [
     {
       "nim": "2401010019",
-      "nama": "Joko Widodo",
-      "fakultas_prodi": "FKIP/Pend. Bahasa Inggris",
+      "fakultas_prodi": "FBS/Pendidikan Bahasa Inggris",
       "smt": 2,
       "ips_smt1": 1.8,
       "ips_smt2": 1.5,
       "golongan_ukt": 7,
       "status_cuti": 0,
       "kode_wilayah": 1,
-      "asal_daerah": "Kampung Anyar",
-      "persen_kehadiran_smt2": 43.75,
-      "mk_cekal_uas_smt2": 5,
+      "asal_daerah": "Kec. Buleleng, Kab. Buleleng",
       "delta_ips": -0.3,
       "semester": 2,
       "wilayah": "Dalam Kec. Buleleng, Kab. Buleleng",
@@ -183,8 +173,7 @@ Mengeksekusi XGBoost built-in SHAP (`pred_contribs`) untuk menghasilkan detail p
 {
   "mahasiswa": {
     "nim": "2401010019",
-    "nama": "Joko Widodo",
-    "fakultas_prodi": "FKIP/Pend. Bahasa Inggris",
+    "fakultas_prodi": "FBS/Pendidikan Bahasa Inggris",
     "semester": 2,
     "ips_smt1": 1.8,
     "ips_smt2": 1.5,
@@ -193,10 +182,8 @@ Mengeksekusi XGBoost built-in SHAP (`pred_contribs`) untuk menghasilkan detail p
     "golongan_ukt": 7,
     "status_cuti": 0,
     "kode_wilayah": 1,
-    "asal_daerah": "Kampung Anyar",
-    "wilayah": "Dalam Kec. Buleleng, Kab. Buleleng",
-    "persen_kehadiran_smt2": 43.75,
-    "mk_cekal_uas_smt2": 5
+    "asal_daerah": "Kec. Buleleng, Kab. Buleleng",
+    "wilayah": "Dalam Kec. Buleleng, Kab. Buleleng"
   },
   "prediksi": {
     "skor_prediksi_model": 98,
@@ -274,17 +261,14 @@ Endpoint impor & sinkronisasi data massal langsung dari SIAKAD/IES kampus.
   "data": [
     {
       "nim": "2401010099",
-      "nama": "Gede Mahardika",
-      "fakultas_prodi": "FT/Teknik Informatika",
+      "fakultas_prodi": "FTK/Teknik Informatika",
       "smt": 2,
       "ips_smt1": 2.40,
       "ips_smt2": 2.10,
       "golongan_ukt": 5,
       "status_cuti": 0,
       "kode_wilayah": 2,
-      "asal_daerah": "Seririt",
-      "persen_kehadiran_smt2": 68.50,
-      "mk_cekal_uas_smt2": 2
+      "asal_daerah": "Kec. Seririt, Kab. Buleleng"
     }
   ]
 }
@@ -302,13 +286,12 @@ Melatih ulang model XGBoost dan memperbarui cache model di memori API secara lan
   "status": "success",
   "message": "Model XGBoost berhasil dilatih ulang & di-hot reload di memory API.",
   "feature_importances": {
-    "ips_smt1": 0.4125,
-    "persen_kehadiran_smt2": 0.2850,
-    "mk_cekal_uas_smt2": 0.1520,
-    "status_cuti": 0.0810,
-    "golongan_ukt": 0.0410,
-    "delta_ips": 0.0185,
-    "kode_wilayah": 0.0100
+    "ips_smt1": 0.3850,
+    "ips_smt2": 0.2920,
+    "delta_ips": 0.1450,
+    "status_cuti": 0.0880,
+    "golongan_ukt": 0.0550,
+    "kode_wilayah": 0.0350
   }
 }
 ```
@@ -339,7 +322,7 @@ Mencatat dan mengambil riwayat tindakan bimbingan akademik / keringanan UKT untu
 ```json
 {
   "jenis_tindakan": "Bimbingan Akademik DPA",
-  "catatan": "Mahasiswa diberikan konseling presensi dan pengajuan keringanan UKT.",
+  "catatan": "Mahasiswa diberikan konseling akademik dan pengajuan keringanan UKT.",
   "petugas": "Dr. Wayan (DPA)"
 }
 ```
@@ -358,7 +341,7 @@ sequenceDiagram
     participant ML as XGBoost Model
     participant SIAKAD as SIAKAD Kampus
 
-    SIAKAD->>API: POST /api/v1/mahasiswa/bulk-sync (Batch Import Data 8 Fitur)
+    SIAKAD->>API: POST /api/v1/mahasiswa/bulk-sync (Batch Import Data 6 Fitur Riil)
     API->>DB: UPSERT data_mahasiswa_smt2 & prediksi_do
     API-->>SIAKAD: 200 OK { total_synced }
 
@@ -392,16 +375,18 @@ sequenceDiagram
 Prediksi DO/
 ├── app/                              # Backend REST API (FastAPI + XGBoost)
 │   ├── database.py                   # Konfigurasi Connection Pool SQLAlchemy
+│   ├── etl_excel_data.py             # Pipeline ETL & Data Prep Mahasiswa Smt 2
 │   ├── main.py                       # Endpoint REST API, SIAKAD Sync, Macro Insights, MLOps, & SHAP
-│   ├── model_xgboost.joblib          # Binary Model XGBoost aktif di memori
+│   ├── model_xgboost.joblib          # Binary Model XGBoost aktif di memori (6 Fitur)
 │   ├── requirements.txt              # Dependensi Python Backend
 │   └── train_model.py                # Script & modul retraining XGBoost
+├── data/                             # Dataset Mentah & Dataset Bersih (CSV/XLSX)
 ├── frontend/                         # Frontend UI (Next.js 16 + Tailwind CSS v4)
 │   ├── package.json                  # Dependensi React 19, Next.js 16, Lucide, Tailwind
 │   └── src/
 │       ├── app/
 │       │   ├── page.tsx              # Dashboard Utama (KPI, Macro Insights, Table, & Modal)
-│       │   └── layout.tsx            # Root Layout
+│       │   └── layout.tsx            # Root Layout & Theme Provider
 │       ├── components/
 │       │   ├── dashboard/
 │       │   │   ├── KPICards.tsx            # Ringkasan KPI & Pie Chart Risiko
@@ -415,11 +400,8 @@ Prediksi DO/
 ├── .env.example                      # Template Environment Variables Produksi
 ├── docker-compose.yml                # Konfigurasi Docker Compose (PostgreSQL & FastAPI)
 ├── Dockerfile                        # Dockerfile Container Backend FastAPI
-├── init_db.sql                       # Script Inisialisasi Database & Data Master Awal
-├── migrate_asal_daerah.sql           # SQL Migration Kolom Asal Daerah
-├── migrate_kehadiran.sql             # SQL Migration Kolom Kehadiran & MK Cekal
-├── migrate_intervensi.sql            # SQL Migration Tabel Intervensi DPA
-├── test_bulk_sync_scenario.py        # Skrip Simulasi Bulk Sync SIAKAD 120 Mahasiswa
+├── init_db.sql                       # Script Inisialisasi Database (3 Tabel Utama)
+├── test_bulk_sync_scenario.py        # Skrip Simulasi Bulk Sync SIAKAD
 ├── INTEGRATION_GUIDE.md              # Panduan Integrasi Developer & SIAKAD
 └── DOCUMENTATION.md                  # Dokumentasi Teknis Komprehensif Sistem Ini
 ```
@@ -429,11 +411,15 @@ Prediksi DO/
 ## 7. Panduan Operasional & Simulasi
 
 * **Panduan Deployment Produksi & Integrasi SIAKAD Kampus**: Lihat dokumen teknis lengkap di [`INTEGRATION_GUIDE.md`](INTEGRATION_GUIDE.md).
+* **Menjalankan Pipeline ETL Data Excel**:
+  ```bash
+  python app/etl_excel_data.py --load-db
+  ```
 * **Menjalankan Sistem Lokal/Docker**:
   ```bash
   docker compose up -d --build
   ```
-* **Menjalankan Simulasi Bulk Sync 120 Mahasiswa**:
+* **Menjalankan Simulasi Bulk Sync Mahasiswa**:
   ```bash
   python test_bulk_sync_scenario.py
   ```

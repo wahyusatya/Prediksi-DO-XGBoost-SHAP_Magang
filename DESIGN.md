@@ -91,9 +91,9 @@ The palette is restrained, purposeful, and semantically rigorous across both Lig
 - **Academic Royal Blue** (`#1e40af` light / `#3b82f6` dark): Used for primary interactive cues, system status badges, and intelligence accents.
 
 ### Secondary (Governance Pillars)
-- **Pilar Akademik Blue** (`#1d4ed8` / `#3b82f6`): Mapped to WR I and Deans for academic factors (IPS, Delta IPS, Cekal UAS).
-- **Pillar Finansial Amber** (`#d97706` / `#f59e0b`): Mapped to WR II and BAAK for financial & regional factors (UKT, Origin).
-- **Pillar Kedisiplinan Teal** (`#0f766e` / `#14b8a6`): Mapped to WR III and DPA for student engagement & attendance factors.
+- **Pilar Akademik Blue** (`#1d4ed8` / `#3b82f6`): Mapped to WR I and Deans for academic factors (IPS S1, IPS S2, Delta IPS).
+- **Pillar Finansial Amber** (`#d97706` / `#f59e0b`): Mapped to WR II and BAAK for financial & regional factors (UKT, Asal Wilayah).
+- **Pillar Kedisiplinan Teal** (`#0f766e` / `#14b8a6`): Mapped to WR III and DPA for student status factors (Cuti Akademik).
 
 ### Neutral
 - **Canvas Slate**: `#f8fafc` in Light mode, `#090d16` in Dark mode.

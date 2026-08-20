@@ -27,7 +27,7 @@ Digunakan pada layar desktop dan display ruang rapat pimpinan eksekutif rektorat
 - Menampilkan ringkasan eksekutif distribusi risiko mahasiswa (Rendah, Sedang, Tinggi) dengan rasio persentase.
 - Menyediakan Analisis Makro agregat pilar pemicu risiko dan Top 3 faktor pemicu global di tingkat universitas maupun per fakultas.
 - Memungkinkan filter cepat berdasarkan Fakultas dan pencarian mahasiswa berdasarkan NIM.
-- Menampilkan modal detail komprehensif mahasiswa: profil, status cuti, kehadiran, cekal UAS, gauge risiko circular SVG, analisis kontribusi SHAP individual (bobot persen & level dampak), serta rekomendasi intervensi bertingkat (Kritis, Penting, Perlu Perhatian) dengan fitur salin catatan ke clipboard untuk bimbingan DPA.
+- Menampilkan modal detail komprehensif mahasiswa: profil, nilai IPS S1 & S2, Delta IPS, status cuti, golongan UKT, asal daerah/wilayah, gauge risiko circular SVG, analisis kontribusi SHAP individual (bobot persen & level dampak), serta rekomendasi intervensi bertingkat (Kritis, Penting, Perlu Perhatian) dengan fitur salin catatan ke clipboard untuk bimbingan DPA.
 - Menjaga 100% fungsionalitas dan kompatibilitas API backend yang sudah ada.
 
 ## Brand Commitments
@@ -37,9 +37,10 @@ Digunakan pada layar desktop dan display ruang rapat pimpinan eksekutif rektorat
 
 ## Evidence on Hand
 
-- Backend API FastAPI aktif dengan endpoint REST /api/v1/mahasiswa, /api/v1/mahasiswa/{nim}/detail, dan /api/v1/analytics/macro-insights.
-- Model ML XGBoost + SHAP (model_xgboost.joblib) dengan 8 fitur: ips_smt1, ips_smt2, delta_ips, golongan_ukt, status_cuti, kode_wilayah, persen_kehadiran_smt2, mk_cekal_uas_smt2.
-- Skema database PostgreSQL 15 untuk master mahasiswa dan riwayat intervensi.
+- Backend API FastAPI aktif dengan endpoint REST `/api/v1/mahasiswa`, `/api/v1/mahasiswa/{nim}/detail`, `/api/v1/analytics/macro-insights`, `/api/v1/mahasiswa/bulk-sync`, `/api/v1/admin/retrain`, dan `/api/v1/mahasiswa/{nim}/intervensi`.
+- Model ML XGBoost + SHAP (`model_xgboost.joblib`) dengan 6 fitur riil mahasiswa Semester 2: `ips_smt1`, `ips_smt2`, `delta_ips`, `golongan_ukt`, `status_cuti`, `kode_wilayah`.
+- Skema database PostgreSQL 15 untuk master mahasiswa Semester 2 (`data_mahasiswa_smt2`), prediksi DO (`prediksi_do`), dan riwayat intervensi (`intervensi_mahasiswa`).
+- Pipeline ETL terintegrasi (`app/etl_excel_data.py`) untuk data ingestion langsung dari file dataset Excel institusi.
 
 ## Product Principles
 
