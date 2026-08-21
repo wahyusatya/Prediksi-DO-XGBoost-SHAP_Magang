@@ -242,22 +242,15 @@ def sync_to_database(df_clean: pd.DataFrame):
                     wilayah = int(row["kode_wilayah"])
                     p_raw = probas[idx]
 
-                    if ips1 < 3.00 or ips2 < 2.50 or cuti >= 1:
-                        base = 68.0 + max(0.0, (3.00 - min(ips1, ips2))) * 8.0 + cuti * 6.0 + (ukt - 1) * 1.2 + (wilayah - 1) * 1.5
+                    if ips1 < 2.75 or ips2 < 2.50 or cuti >= 1:
+                        base = 68.0 + max(0.0, (2.75 - min(ips1, ips2))) * 12.0 + cuti * 6.0 + (ukt - 1) * 0.5 + (wilayah - 1) * 0.5
                         final_float = min(98.0, max(70.0, 0.40 * (p_raw * 100) + 0.60 * base))
+                    elif delta < -0.40 or ips2 < 2.85:
+                        base = 40.0 + (abs(delta) * 15.0 if delta < 0 else 0.0) + max(0.0, (2.85 - ips2)) * 12.0 + (ukt - 1) * 0.8
+                        final_float = min(69.0, max(40.0, 0.40 * (p_raw * 100) + 0.60 * base))
                     else:
-                        has_trigger = (
-                            (delta < -0.15)
-                            or (ukt >= 4 and delta < 0)
-                            or (ukt >= 5)
-                            or (ukt >= 3 and wilayah >= 2)
-                        )
-                        if has_trigger:
-                            base = 40.0 + (abs(delta) * 20.0 if delta < 0 else 0.0) + (ukt - 1) * 2.5 + (wilayah - 1) * 3.0
-                            final_float = min(69.0, max(40.0, 0.40 * (p_raw * 100) + 0.60 * base))
-                        else:
-                            base = 25.0 - (ips1 - 3.00) * 12.0 - (ips2 - 3.00) * 10.0 + (ukt - 1) * 1.5
-                            final_float = min(39.0, max(5.0, 0.50 * (p_raw * 100) + 0.50 * base))
+                        base = 18.0 - (ips1 - 3.00) * 8.0 - (ips2 - 3.00) * 8.0 + (ukt - 1) * 1.2 + (wilayah - 1) * 0.8
+                        final_float = min(35.0, max(5.0, 0.40 * (p_raw * 100) + 0.60 * base))
 
                     skor = int(round(final_float))
                     status = "Tinggi" if skor >= 70 else ("Sedang" if skor >= 40 else "Rendah")

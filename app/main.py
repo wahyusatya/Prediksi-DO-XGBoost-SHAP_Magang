@@ -262,7 +262,7 @@ def _prepare_df(records: list[dict]) -> pd.DataFrame:
 def _calc_do_score(proba_raw: float, data: dict) -> tuple[int, str]:
     """
     Menghitung skor prediksi DO secara konsisten untuk dashboard & detail
-    menggunakan 6 fitur riil mahasiswa Semester 2.
+    berbasis performa akademik utama dengan gradien UKT yang proporsional.
     """
     ips1 = float(data.get("ips_smt1", 0.0))
     ips2 = float(data.get("ips_smt2", 0.0))
@@ -271,22 +271,16 @@ def _calc_do_score(proba_raw: float, data: dict) -> tuple[int, str]:
     ukt = int(data.get("golongan_ukt", 1))
     wilayah = int(data.get("kode_wilayah", 1))
 
-    if ips1 < 3.00 or ips2 < 2.50 or cuti >= 1:
-        base = 68.0 + max(0.0, (3.00 - min(ips1, ips2))) * 8.0 + cuti * 6.0 + (ukt - 1) * 1.2 + (wilayah - 1) * 1.5
+    # ponytail: gradien UKT moderat (memberi bobot wajar ~13-14% pada UKT 7 tanpa melompat ke risiko sedang)
+    if ips1 < 2.75 or ips2 < 2.50 or cuti >= 1:
+        base = 68.0 + max(0.0, (2.75 - min(ips1, ips2))) * 12.0 + cuti * 6.0 + (ukt - 1) * 0.5 + (wilayah - 1) * 0.5
         final_float = min(98.0, max(70.0, 0.40 * (proba_raw * 100) + 0.60 * base))
+    elif delta < -0.40 or ips2 < 2.85:
+        base = 40.0 + (abs(delta) * 15.0 if delta < 0 else 0.0) + max(0.0, (2.85 - ips2)) * 12.0 + (ukt - 1) * 0.8
+        final_float = min(69.0, max(40.0, 0.40 * (proba_raw * 100) + 0.60 * base))
     else:
-        has_trigger = (
-            (delta < -0.15)
-            or (ukt >= 4 and delta < 0)
-            or (ukt >= 5)
-            or (ukt >= 3 and wilayah >= 2)
-        )
-        if has_trigger:
-            base = 40.0 + (abs(delta) * 20.0 if delta < 0 else 0.0) + (ukt - 1) * 2.5 + (wilayah - 1) * 3.0
-            final_float = min(69.0, max(40.0, 0.40 * (proba_raw * 100) + 0.60 * base))
-        else:
-            base = 25.0 - (ips1 - 3.00) * 12.0 - (ips2 - 3.00) * 10.0 + (ukt - 1) * 1.5
-            final_float = min(39.0, max(5.0, 0.50 * (proba_raw * 100) + 0.50 * base))
+        base = 18.0 - (ips1 - 3.00) * 8.0 - (ips2 - 3.00) * 8.0 + (ukt - 1) * 1.2 + (wilayah - 1) * 0.8
+        final_float = min(35.0, max(5.0, 0.40 * (proba_raw * 100) + 0.60 * base))
 
     skor_do = int(round(final_float))
     return skor_do, _klasifikasi_risiko(skor_do)
@@ -304,33 +298,16 @@ def _compute_shap_values(X: pd.DataFrame):
 
 
 def _calc_feature_weight(feat: str, sv: float, rv: float) -> float:
-    """Menghitung weighted importance SHAP untuk faktor pemicu (6 fitur riil)."""
-    w = abs(sv)
-    if feat == "status_cuti" and rv >= 1:
-        w += 0.80 + (rv - 1) * 0.50
-    elif feat == "golongan_ukt" and rv >= 5:
-        w += 0.45 * (rv - 4)
-    elif feat == "kode_wilayah" and rv == 3:
-        w += 0.75
-    elif feat == "kode_wilayah" and rv == 2:
-        w += 0.35
-    elif feat == "delta_ips" and rv < 0:
-        w += abs(rv) * 1.5
-    elif feat in ("ips_smt1", "ips_smt2") and rv < 2.5:
-        w += (2.5 - rv) * 1.2
-    return w
+    """Menghitung weighted importance SHAP murni tanpa inflasi artifisial."""
+    return abs(sv)
 
 
 def _get_kontribusi(feat: str, sv: float, rv: float) -> str:
-    """Menentukan narasi arah kontribusi faktor terhadap risiko DO."""
-    if sv > 0:
+    """Menentukan narasi arah kontribusi faktor terhadap risiko DO berdasarkan SHAP."""
+    if sv > 0.05:
         return "Meningkatkan risiko DO"
-    if sv < 0:
+    if sv < -0.05:
         return "Menurunkan risiko DO"
-    if (feat == "delta_ips" and rv < 0) or (feat in ("ips_smt1", "ips_smt2") and rv < 3.0) or \
-       (feat == "status_cuti" and rv >= 1) or (feat == "golongan_ukt" and rv >= 5) or \
-       (feat == "kode_wilayah" and rv >= 2):
-        return "Meningkatkan risiko DO"
     return "Netral terhadap risiko DO"
 
 
@@ -369,15 +346,15 @@ def _generate_recommendations(top_factors: list, mhs_data: dict) -> list:
             "Kritis" if cuti >= 2 else "Penting",
         )
 
-    # Rule 2: UKT Tinggi & Wilayah Jauh (Finansial & Wilayah)
-    if ("golongan_ukt" in top_features and ukt >= 4) or \
-       ("kode_wilayah" in top_features and wilayah >= 2):
-        add_rec(
-            "Finansial & Wilayah",
-            "Verifikasi kelayakan bantuan beasiswa atau pengajuan keringanan / penyesuaian UKT oleh BAAK/WR II. "
-            "Evaluasi kondisi sosial-ekonomi keluarga serta akomodasi mahasiswa luar daerah.",
-            "Kritis" if ukt >= 6 and wilayah >= 3 else "Penting",
-        )
+    # Rule 2: Finansial & Wilayah (hanya jika ada penurunan akademik / cuti)
+    if ("golongan_ukt" in top_features or "kode_wilayah" in top_features) and (ukt >= 5 or wilayah >= 2):
+        if ips2 < 2.75 or delta < -0.20 or cuti >= 1:
+            add_rec(
+                "Finansial & Wilayah",
+                "Verifikasi kelayakan bantuan beasiswa atau pengajuan keringanan / penyesuaian UKT oleh BAAK/WR II. "
+                "Evaluasi kondisi sosial-ekonomi keluarga serta akomodasi mahasiswa luar daerah.",
+                "Kritis" if ukt >= 6 and wilayah >= 3 else "Penting",
+            )
 
     # Rule 3: Penurunan IPS / IPS Rendah (Akademik)
     if ("delta_ips" in top_features and delta < 0) or \
@@ -406,7 +383,7 @@ def _build_shap_description(feature_name: str, shap_value: float, raw_value: flo
 
     if feature_name == "golongan_ukt":
         ukt = int(raw_value)
-        ket = "tinggi — meningkatkan risiko DO" if ukt >= 6 else ("sedang" if ukt >= 4 else "rendah — beban ringan")
+        ket = "UKT Kelompok Atas" if ukt >= 6 else ("UKT Kelompok Menengah" if ukt >= 4 else "UKT Kelompok Terjangkau")
         return f"Golongan UKT {ukt} ({ket})"
 
     if feature_name == "status_cuti":
